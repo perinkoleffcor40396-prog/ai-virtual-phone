@@ -5197,7 +5197,7 @@ export function ChatRoom({ session, onBack, returnToApp, onReturnToApp, onDelete
                     <span className="page-header-right" style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         {returnToApp && onReturnToApp ? (
                             <button
-                                className="page-back-btn"
+                                className="page-back-btn chat-return-app-btn"
                                 type="button"
                                 onClick={onReturnToApp}
                                 aria-label={`返回${returnToApp.appName}`}

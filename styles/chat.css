@@ -59,6 +59,37 @@
   z-index: 10;
 }
 
+/* Keep the optional return-to-app action and the settings action as separate,
+   accurately centered touch targets. */
+.chat-room-wrapper .page-header-right {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 92px;
+  flex: 0 0 auto;
+}
+
+.chat-room-wrapper .page-header-right .page-back-btn {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 40px;
+  position: relative;
+  z-index: 1;
+  touch-action: manipulation;
+}
+
+.chat-room-wrapper .page-header-right .chat-return-app-btn {
+  margin-right: 0;
+}
+
 /* 聊天插件 chat.header 坑位：头部与消息区都是 absolute 浮层，坑位必须自己定位，
    贴在固定头部正下方。消息区 padding-top 额外加了插件条高度变量，避免遮住首条消息。 */
 .chat-app .chat-room-wrapper .chat-plugin-header {
