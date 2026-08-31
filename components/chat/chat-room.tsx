@@ -5194,7 +5194,7 @@ export function ChatRoom({ session, onBack, returnToApp, onReturnToApp, onDelete
                             </span>
                         )}
                     </span>
-                    <span className="page-header-right" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span className="page-header-right" style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         {returnToApp && onReturnToApp ? (
                             <button
                                 className="page-back-btn"
