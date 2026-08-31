@@ -218,6 +218,13 @@ type CustomAppReturnTarget = {
   sessionId?: string;
 };
 
+type ChatReturnToCustomAppTarget = {
+  appId: string;
+  appName: string;
+  iconId: DesktopIconId;
+  launchContext: Record<string, unknown>;
+};
+
 type CustomAppLaunchState = {
   appId: string;
   context: Record<string, unknown>;
@@ -1928,6 +1935,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       if (answered) {
         // 壳上已经按过接听：跳过横幅，直接开聊天进通话屏（同横幅接听键的路径）
         setActiveApp("chat" as IconId);
+        setChatReturnToCustomApp(null);
         setChatInitSessionId(sessionId);
         window.setTimeout(() => {
           window.dispatchEvent(new CustomEvent("ai-call-trigger", {
@@ -2331,7 +2339,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       return;
     }
     if (builtinIconId === "resources") setResourcesInitialPage("main");
-    if (builtinIconId === "chat") setChatInitSessionId(null);
+    if (builtinIconId === "chat") {
+      setChatInitSessionId(null);
+      setChatReturnToCustomApp(null);
+    }
     setActiveApp(builtinIconId);
   }
 
@@ -2373,6 +2384,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
   // Allow other components to switch apps via custom event
   const [chatInitSessionId, setChatInitSessionId] = useState<string | null>(null);
   const [activeChatSession, setActiveChatSession] = useState<ChatSession | null>(null);
+  const [chatReturnToCustomApp, setChatReturnToCustomApp] = useState<ChatReturnToCustomAppTarget | null>(null);
   const [customAppLaunchContext, setCustomAppLaunchContext] = useState<CustomAppLaunchState | null>(null);
   const [appMarketLaunchContext, setAppMarketLaunchContext] = useState<Record<string, unknown> | null>(null);
   useEffect(() => {
@@ -2386,6 +2398,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
           ? rawLaunchContext as Record<string, unknown>
           : {};
         if (customAppId) {
+          setChatReturnToCustomApp(null);
           openCustomAppWithBackgroundUpdateCheck(toCustomAppIconId(customAppId), launchContextRecord);
           if (detail.sessionId) setChatInitSessionId(detail.sessionId);
           else setChatInitSessionId(null);
@@ -2401,6 +2414,24 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
         setAppMarketLaunchContext(nextAppId === "appmarket" ? launchContextRecord : null);
         if (detail.appId === "resources") {
           setResourcesInitialPage(detail.resourcePage === "vn_assets" || detail.resourcePage === "memory" ? detail.resourcePage : "main");
+        }
+        const rawReturnToCustomApp = detail.returnToCustomApp;
+        if (nextAppId === "chat" && rawReturnToCustomApp && typeof rawReturnToCustomApp === "object" && !Array.isArray(rawReturnToCustomApp)) {
+          const returnRecord = rawReturnToCustomApp as Record<string, unknown>;
+          const returnAppId = String(returnRecord.appId ?? "").trim();
+          if (returnAppId) {
+            const returnLaunchContext = returnRecord.launchContext && typeof returnRecord.launchContext === "object" && !Array.isArray(returnRecord.launchContext)
+              ? returnRecord.launchContext as Record<string, unknown>
+              : {};
+            setChatReturnToCustomApp({
+              appId: returnAppId,
+              appName: String(returnRecord.appName ?? "APP") || "APP",
+              iconId: toCustomAppIconId(returnAppId),
+              launchContext: returnLaunchContext,
+            });
+          }
+        } else if (nextAppId !== "chat") {
+          setChatReturnToCustomApp(null);
         }
         setActiveApp(nextAppId as DesktopIconId);
         if (detail.sessionId) setChatInitSessionId(detail.sessionId);
@@ -3976,8 +4007,15 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
             setActiveApp(null);
             setActiveChatSession(null);
             setChatInitSessionId(null);
+            setChatReturnToCustomApp(null);
           }}
           initialSessionId={chatInitSessionId}
+          returnToApp={chatReturnToCustomApp ? { appId: chatReturnToCustomApp.appId, appName: chatReturnToCustomApp.appName } : null}
+          onReturnToApp={chatReturnToCustomApp ? () => {
+            const target = chatReturnToCustomApp;
+            setChatReturnToCustomApp(null);
+            openCustomAppWithBackgroundUpdateCheck(target.iconId, target.launchContext);
+          } : undefined}
           onSessionChange={setActiveChatSession}
         />
       );

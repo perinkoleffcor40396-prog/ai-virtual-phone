@@ -453,9 +453,16 @@ function shouldShowTimestamp(currentMsg: string, prevMsg: string | null): boolea
     return new Date(currentMsg).getTime() - new Date(prevMsg).getTime() > TIME_GAP;
 }
 
+type ChatRoomReturnTarget = {
+    appId: string;
+    appName: string;
+};
+
 type ChatRoomProps = {
     session: ChatSession;
     onBack: () => void;
+    returnToApp?: ChatRoomReturnTarget | null;
+    onReturnToApp?: () => void;
     /** 会话在设置页被删除后回调：由外层卸载本聊天室并回到列表 */
     onDeleted?: () => void;
 };
@@ -1056,7 +1063,7 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     );
 }));
 
-export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
+export function ChatRoom({ session, onBack, returnToApp, onReturnToApp, onDeleted }: ChatRoomProps) {
     const [liveCSS, setLiveCSS] = useState(session.customCSS || "");
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [transientMessages, setTransientMessages] = useState<ChatMessage[]>([]);
@@ -5187,7 +5194,18 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                             </span>
                         )}
                     </span>
-                    <span className="page-header-right">
+                    <span className="page-header-right" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        {returnToApp && onReturnToApp ? (
+                            <button
+                                className="page-back-btn"
+                                type="button"
+                                onClick={onReturnToApp}
+                                aria-label={`返回${returnToApp.appName}`}
+                                title={`返回${returnToApp.appName}`}
+                            >
+                                <ChevronRight size={20} strokeWidth={1.7} />
+                            </button>
+                        ) : null}
                         <button className="page-back-btn" type="button" onClick={() => setShowSettings(true)} aria-label="更多">
                             <MoreHorizontal size={22} strokeWidth={1.5} />
                         </button>

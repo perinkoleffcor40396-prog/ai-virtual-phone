@@ -1681,7 +1681,17 @@ export function CustomAppRunner({
       const characterId = String(record.characterId ?? "").trim();
       if (!characterId) throw new Error("chat.openConversation 缺少 characterId。");
       const session = ensureCharacterSession(characterId);
-      window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "chat", sessionId: session.id } }));
+      window.dispatchEvent(new CustomEvent("open-app", {
+        detail: {
+          appId: "chat",
+          sessionId: session.id,
+          returnToCustomApp: {
+            appId: app.id,
+            appName: app.name,
+            launchContext: launchContext && typeof launchContext === "object" ? launchContext : {},
+          },
+        },
+      }));
       return { sessionId: session.id };
     }
 

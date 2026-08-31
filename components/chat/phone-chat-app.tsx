@@ -20,15 +20,22 @@ import { getMascotSettingsSnapshot } from "@/lib/mascot-settings";
 
 type TabKey = "messages" | "contacts" | "feeds" | "me";
 
+type ChatReturnToAppTarget = {
+    appId: string;
+    appName: string;
+};
+
 export type PhoneChatAppProps = {
     onClose: () => void;
     initialSessionId?: string | null;
+    returnToApp?: ChatReturnToAppTarget | null;
+    onReturnToApp?: () => void;
     onSessionChange?: (session: ChatSession | null) => void;
     sharePayload?: ChatSharePayload | null;
     onShareDone?: () => void;
 };
 
-export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSessionId, onSessionChange, sharePayload, onShareDone }: PhoneChatAppProps) {
+export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSessionId, returnToApp, onReturnToApp, onSessionChange, sharePayload, onShareDone }: PhoneChatAppProps) {
     const [activeTab, setActiveTab] = useState<TabKey>("messages");
     const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
     const [activeMascot, setActiveMascot] = useState(false);
@@ -304,6 +311,8 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
                     <ChatRoom
                         session={sess}
                         onBack={() => setActiveSession(null)}
+                        returnToApp={returnToApp}
+                        onReturnToApp={onReturnToApp}
                         onDeleted={() => {
                             // 会话已删除：把缓存的聊天室一并卸载，避免僵尸挂载
                             setVisitedSessions(prev => {
