@@ -174,6 +174,33 @@ function buildMomentsBilingualInstruction(enabled: boolean, customPrompt?: strin
     return resolveBilingualPrompt(enabled, customPrompt, DEFAULT_MOMENTS_BILINGUAL_PROMPT);
 }
 
+/** Convert explicit/current time into visual lighting constraints without another AI call. */
+function appendMomentTimeConstraint(description: string): string {
+    const text = String(description || "");
+    const lower = text.toLowerCase();
+    const hourMatch = text.match(/(?:凌晨|深夜|午夜|晚上|早上|清晨|上午|中午|下午|傍晚|黄昏)?\s*(\d{1,2})(?:点|時|:|：)(\d{1,2})?/i);
+    const currentHour = new Date().getHours();
+    const explicitPeriod = lower.includes("凌晨") || lower.includes("深夜") || lower.includes("午夜") || lower.includes("晚上")
+        ? "night"
+        : lower.includes("清晨") || lower.includes("早上")
+            ? "dawn"
+            : lower.includes("傍晚") || lower.includes("黄昏")
+                ? "dusk"
+                : lower.includes("上午") || lower.includes("中午") || lower.includes("下午")
+                    ? "day"
+                    : null;
+    const hour = hourMatch ? Number(hourMatch[1]) % 24 : currentHour;
+    const period = explicitPeriod || (hour < 5 ? "night" : hour < 7 ? "dawn" : hour < 17 ? "day" : hour < 19 ? "dusk" : "night");
+    const rules = period === "night"
+        ? "夜间/深夜光线，天空或窗外明显偏暗，以室内灯、街灯或其他人工光源为主；禁止白天、正午阳光、明亮蓝天、日出。"
+        : period === "dawn"
+            ? "清晨光线，低亮度的日出前后氛围；禁止正午强光和深夜黑暗。"
+            : period === "dusk"
+                ? "傍晚或黄昏光线，可有夕阳或蓝调时刻；禁止正午强光和深夜黑暗。"
+                : "白天自然光线；禁止夜景、深夜黑暗和以街灯为主的画面。";
+    return `${text}\n\n【时间与光线约束】当前/文案时间约为 ${hour} 点。${rules}`.trim();
+}
+
 /**
  * Resolve all inputs needed for assemblePromptPayload(), following the same
  * Binding follows the "chat" slot directly — moments shares chat's config.
@@ -1220,7 +1247,7 @@ export async function generateMomentPhotoUrl(
     try {
         throwIfAborted(signal);
         const generated = await generateImageFromConfiguredApi({
-            description,
+            description: appendMomentTimeConstraint(description),
             characterId,
             useReferenceImage,
             signal,
