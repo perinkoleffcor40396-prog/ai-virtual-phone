@@ -224,6 +224,12 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
             if (!target) return;
             if (postActionsRef.current?.contains(target)) return;
             if (postActionsBtnRef.current?.contains(target)) return;
+            
+            // 避免在触发编辑或删除时意外触发收起，交由按钮自己的 onClick 处理
+            if (target instanceof Element && target.closest(".feed-post-action-menu button")) {
+                return;
+            }
+            
             setShowPostActions(false);
         };
         document.addEventListener("pointerdown", handlePointerDown, true);
@@ -793,9 +799,11 @@ function MomentInlineBilingualText({
                 type="button"
                 className="feed-inline-translation-toggle chat-bilingual-toggle text-[var(--c-action-blue,#246bfd)] opacity-80"
                 onClick={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     setExpanded(v => !v);
                 }}
+                onPointerDown={(e) => e.stopPropagation()}
                 aria-expanded={expanded}
             >
                 {expanded ? "收起中文" : "中文"}
