@@ -57,7 +57,6 @@ const MDI_PATHS: Record<IconId, string> = {
   story: mdiMovie,
   game: mdiGamepadVariant,
   appmarket: mdiPackageVariant,
-  xiaohongshu: mdiPackageVariant,
   checkphone: mdiCellphone,
   shopping: mdiShopping,
   calendar: mdiCalendarMonth,

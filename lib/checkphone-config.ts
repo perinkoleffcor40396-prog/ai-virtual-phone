@@ -8,7 +8,6 @@ export type CheckPhoneAppId =
   | "assets"
   | "notes"
   | "reading"
-  | "xiaohongshu"
   | "takeout"
   | "weibo"
   | "douyin"
@@ -832,78 +831,6 @@ export type CheckPhoneDoubanPayload = {
   publishedTopics?: CheckPhoneDoubanTopicItem[];
 };
 
-export type CheckPhoneXiaohongshuTone = "ivory" | "mist" | "blush" | "graphite";
-
-export type CheckPhoneXiaohongshuComment = {
-  id: string;
-  authorName: string;
-  text: string;
-  replyTo?: string;
-  replyToCommentId?: string;
-};
-
-export type CheckPhoneXiaohongshuNote = {
-  id: string;
-  authorName: string;
-  title: string;
-  body: string;
-  videoDescription?: string;
-  coverIcon: string;
-  tone: CheckPhoneXiaohongshuTone;
-  likeCount: number;
-  commentCount: number;
-  saveCount: number;
-  liked?: boolean;
-  saved?: boolean;
-  tags: string[];
-  comments: CheckPhoneXiaohongshuComment[];
-};
-
-export type CheckPhoneXiaohongshuMessageOverview = {
-  likesAndSavesCount: number;
-  newFollowersCount: number;
-  commentsAndMentionsCount: number;
-};
-
-export type CheckPhoneXiaohongshuThreadMessage = {
-  id: string;
-  authorName: string;
-  text: string;
-  timeLabel: string;
-  direction: "incoming" | "outgoing";
-};
-
-export type CheckPhoneXiaohongshuThreadType = "direct" | "group";
-
-export type CheckPhoneXiaohongshuThread = {
-  id: string;
-  name: string;
-  type: CheckPhoneXiaohongshuThreadType;
-  unread?: boolean;
-  tagLabel: string;
-  messages: CheckPhoneXiaohongshuThreadMessage[];
-};
-
-export type CheckPhoneXiaohongshuProfile = {
-  name: string;
-  handle?: string;
-  bio: string;
-  followingCount: number;
-  followerCount: number;
-  likedAndSavedCount: number;
-};
-
-export type CheckPhoneXiaohongshuPayload = {
-  headerTitle: string;
-  headerSubtitle: string;
-  profile: CheckPhoneXiaohongshuProfile;
-  homeNotes: CheckPhoneXiaohongshuNote[];
-  videoNotes: CheckPhoneXiaohongshuNote[];
-  myNotes: CheckPhoneXiaohongshuNote[];
-  messageOverview: CheckPhoneXiaohongshuMessageOverview;
-  messageThreads: CheckPhoneXiaohongshuThread[];
-};
-
 export type CheckPhoneWeiboTone = "ivory" | "mist" | "graphite" | "blush";
 
 export type CheckPhoneWeiboComment = {
@@ -1121,7 +1048,6 @@ export type CheckPhonePromptSecondaryTag =
   | "assets"
   | "notes"
   | "reader"
-  | "xiaohongshu"
   | "takeout"
   | "weibo"
   | "douyin"
@@ -1158,7 +1084,6 @@ export const CHECKPHONE_FIXED_APP_IDS: CheckPhoneAppId[] = [
 
 export const CHECKPHONE_OPTIONAL_POOL_APP_IDS: CheckPhoneAppId[] = [
   "reading",
-  "xiaohongshu",
   "takeout",
   "weibo",
   "douyin",
@@ -1187,7 +1112,6 @@ export const CHECKPHONE_APP_SPECS: Record<CheckPhoneAppId, CheckPhoneAppSpec> = 
   assets: { id: "assets", label: "资产", englishLabel: "Assets" },
   notes: { id: "notes", label: "备忘录", englishLabel: "Notes" },
   reading: { id: "reading", label: "阅读", englishLabel: "Reading" },
-  xiaohongshu: { id: "xiaohongshu", label: "小红书", englishLabel: "Xiaohongshu", shortLabel: "小红书" },
   takeout: { id: "takeout", label: "外卖", englishLabel: "Takeout" },
   weibo: { id: "weibo", label: "微博", englishLabel: "Weibo" },
   douyin: { id: "douyin", label: "抖音", englishLabel: "Douyin" },
@@ -1219,7 +1143,6 @@ const CHECKPHONE_APP_PROMPT_TAGS: Record<CheckPhoneAppId, Exclude<CheckPhoneProm
   assets: "assets",
   notes: "notes",
   reading: "reader",
-  xiaohongshu: "xiaohongshu",
   takeout: "takeout",
   weibo: "weibo",
   douyin: "douyin",
@@ -1246,7 +1169,6 @@ export const CHECKPHONE_PROMPT_SECONDARY_TAG_LABELS: Record<CheckPhonePromptSeco
   assets: CHECKPHONE_APP_SPECS.assets.label,
   notes: CHECKPHONE_APP_SPECS.notes.label,
   reader: CHECKPHONE_APP_SPECS.reading.label,
-  xiaohongshu: CHECKPHONE_APP_SPECS.xiaohongshu.label,
   takeout: CHECKPHONE_APP_SPECS.takeout.label,
   weibo: CHECKPHONE_APP_SPECS.weibo.label,
   douyin: CHECKPHONE_APP_SPECS.douyin.label,

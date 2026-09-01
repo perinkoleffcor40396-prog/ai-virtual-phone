@@ -24,7 +24,6 @@ import "@/lib/qa-error-log";
 import { RealityBridgeApp } from "@/components/reality-bridge-app";
 import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/reality-bridge/types";
 import { DiaryApp } from "@/components/diary/diary-app";
-import { XiaohongshuApp } from "@/components/xiaohongshu/xiaohongshu-app";
 import { StoryApp } from "@/components/story/story-app";
 import { VnApp } from "@/components/vn/vn-app";
 import ReadingApp from "@/components/reading/reading-app";
@@ -50,7 +49,7 @@ import { hydrateMomentsStorage } from "@/lib/moments-storage";
 import { hydrateVnStorage } from "@/lib/vn-storage";
 import { hydrateSettingsDb } from "@/lib/settings-db";
 import { hydrateDwellingStorage } from "@/lib/dwelling-storage";
-import { hydrateCheckPhoneStorage } from "@/lib/checkphone-storage";
+import { cleanupRemovedXiaohongshuData, hydrateCheckPhoneStorage } from "@/lib/checkphone-storage";
 import {
   DOCK_DEFAULT,
   ICONS,
@@ -1086,12 +1085,9 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   const pendingCustomAppBackgroundToolsRef = useRef<Map<string, PendingCustomAppBackgroundTool>>(new Map());
   const [resourcesInitialPage, setResourcesInitialPage] = useState<ResourceSubPage>("main");
   const [dwellingMounted, setDwellingMounted] = useState(false);
-  const [xiaohongshuMounted, setXiaohongshuMounted] = useState(false);
-  const [xiaohongshuBusy, setXiaohongshuBusy] = useState(false);
   const [shoppingMounted, setShoppingMounted] = useState(false);
   const [shoppingBusy, setShoppingBusy] = useState(false);
   if (activeApp === "dwelling" && !dwellingMounted) setDwellingMounted(true);
-  if (activeApp === "xiaohongshu" && !xiaohongshuMounted) setXiaohongshuMounted(true);
   if (activeApp === "shopping" && !shoppingMounted) setShoppingMounted(true);
   const [widgets, setWidgets] = useState<WidgetInstance[]>([]);
   const [incomingCall, setIncomingCall] = useState<{
@@ -1791,6 +1787,9 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       } catch (err) {
         console.warn("[Desktop] storage hydration error:", err);
       }
+
+      // 水合完成后清理已移除的小红书数据，确保迁移读取的是完整缓存。
+      await cleanupRemovedXiaohongshuData();
 
       // Clear stale generating flags from previous browser session
       // (if the user closed the browser while AI was generating, the flag would be stuck forever)
@@ -3888,17 +3887,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     if (targetPageIndex !== page) setCurrentPageIndex(targetPageIndex);
   }, [editMode, getSwipePageWidth, pageCount, setSwipeDrag]);
 
-  const handleCloseXiaohongshu = useCallback((isBusy?: boolean) => {
-    const shouldKeepMounted = isBusy ?? xiaohongshuBusy;
-    setActiveApp(null);
-    if (shouldKeepMounted) {
-      setNotice("小红书正在后台生成，完成后会自动更新。");
-      return;
-    }
-    setXiaohongshuBusy(false);
-    setXiaohongshuMounted(false);
-  }, [xiaohongshuBusy]);
-
   const handleCloseShopping = useCallback((isBusy?: boolean) => {
     const shouldKeepMounted = isBusy ?? shoppingBusy;
     setActiveApp(null);
@@ -4090,10 +4078,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "diary") {
       return <DiaryApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
-    }
-
-    if (activeApp === "xiaohongshu") {
-      return null;
     }
 
     if (activeApp === "story") {
@@ -4729,7 +4713,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                   </>
                 ) : (
                   <>
-                    <section className="phone-app-pane" style={activeApp === "dwelling" || activeApp === "xiaohongshu" || activeApp === "shopping" ? { display: "none" } : undefined}>
+                    <section className="phone-app-pane" style={activeApp === "dwelling" || activeApp === "shopping" ? { display: "none" } : undefined}>
                       {renderAppBody()}
                     </section>
                     {/* DwellingApp stays mounted while generating — auto-unmounts when idle */}
@@ -4743,22 +4727,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                       </section>
                     )}
                   </>
-                )}
-                {xiaohongshuMounted && (
-                  <section className="phone-app-pane" style={activeApp !== "xiaohongshu" ? { display: "none" } : undefined}>
-                    <XiaohongshuApp
-                      onClose={handleCloseXiaohongshu}
-                      onNotice={setNotice}
-                      visible={activeApp === "xiaohongshu"}
-                      onBusyChange={setXiaohongshuBusy}
-                      onIdle={() => {
-                        if (activeApp !== "xiaohongshu") {
-                          setXiaohongshuBusy(false);
-                          setXiaohongshuMounted(false);
-                        }
-                      }}
-                    />
-                  </section>
                 )}
                 {shoppingMounted && (
                   <section className="phone-app-pane" style={activeApp !== "shopping" ? { display: "none" } : undefined}>

@@ -61,7 +61,6 @@ import { CheckPhoneSteamPage } from "@/components/checkphone/checkphone-steam-pa
 import { CheckPhoneTelegramPage } from "@/components/checkphone/checkphone-telegram-page";
 import { CheckPhoneTakeoutPage } from "@/components/checkphone/checkphone-takeout-page";
 import { CheckPhoneWeiboPage } from "@/components/checkphone/checkphone-weibo-page";
-import { CheckPhoneXiaohongshuPage } from "@/components/checkphone/checkphone-xiaohongshu-page";
 import { CheckPhoneXPage } from "@/components/checkphone/checkphone-x-page";
 import { CheckPhoneYoutubePage } from "@/components/checkphone/checkphone-youtube-page";
 import { loadCharacters } from "@/lib/character-storage";
@@ -115,7 +114,6 @@ const CHECKPHONE_EMBEDDED_APP_IDS = [
   "music",
   "reading",
   "weibo",
-  "xiaohongshu",
   "email",
   "douyin",
   "takeout",
@@ -273,7 +271,7 @@ function getAppIconClass(appId: CheckPhoneAppId, isDock = false) {
   const baseClass = isDock ? "cp-app-icon cp-app-icon--dock" : "cp-app-icon";
   // Interspersed distribution to ensure grey icons don't cluster in one column
   const midGreyApps: string[] = ["photos", "weibo", "steam", "telegram", "reddit"];
-  const lightGreyApps: string[] = ["messages", "bilibili", "xiaohongshu", "email", "instagram"];
+  const lightGreyApps: string[] = ["messages", "bilibili", "email", "instagram"];
   const whiteApps: string[] = ["browser", "douyin", "reading", "notes", "shopping", "assets", "youtube"];
 
   if (midGreyApps.includes(appId)) return `${baseClass} cp-app-icon--mid-grey`;
@@ -471,8 +469,6 @@ export function CheckPhoneApp({ onClose }: CheckPhoneAppProps) {
         return <CheckPhoneReadingPage character={activeCharacter} onBack={closeSelectedApp} />;
       case "weibo":
         return <CheckPhoneWeiboPage character={activeCharacter} onBack={closeSelectedApp} />;
-      case "xiaohongshu":
-        return <CheckPhoneXiaohongshuPage character={activeCharacter} onBack={closeSelectedApp} />;
       case "email":
         return <CheckPhoneEmailPage character={activeCharacter} onBack={closeSelectedApp} />;
       case "douyin":

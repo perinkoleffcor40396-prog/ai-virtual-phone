@@ -9,7 +9,6 @@ export type IconId =
   | "story"
   | "game"
   | "appmarket"
-  | "xiaohongshu"
   | "dwelling"
   | "checkphone"
   | "shopping"
@@ -61,7 +60,6 @@ export const PAGE_2_DEFAULT: IconId[] = [
   "cocreate",
   "game",
   "appmarket",
-  "xiaohongshu",
   "dwelling",
   "story",
   "vnmode",
@@ -82,12 +80,6 @@ export const ICONS: Record<IconId, IconMeta> = {
   story: { id: "story", label: "\u5267\u60C5", tone: "var(--c-icon-story, #8b6f52)", placeholder: false },
   game: { id: "game", label: "游戏", tone: "var(--c-icon-blue)", placeholder: false },
   appmarket: { id: "appmarket", label: "应用市场", tone: "var(--c-icon-teal)", placeholder: false },
-  xiaohongshu: {
-    id: "xiaohongshu",
-    label: "\u5C0F\u7EA2\u4E66",
-    tone: "var(--c-icon-rose)",
-    placeholder: false
-  },
   checkphone: { id: "checkphone", label: "查手机", tone: "var(--c-icon-slate)", placeholder: false },
   dwelling: {
     id: "dwelling",

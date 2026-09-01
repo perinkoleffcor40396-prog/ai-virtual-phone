@@ -1,6 +1,6 @@
 import Dexie from "dexie";
 import { CHECKPHONE_APP_SPECS, type CheckPhoneAppId, type CheckPhoneManifest, type CheckPhoneSnapshot } from "./checkphone-config";
-import { kvGet, kvRemove, kvSet, registerDynamicPrefix } from "./kv-db";
+import { kvGet, kvKeysWithPrefix, kvRemove, kvSet, registerDynamicPrefix } from "./kv-db";
 import { formatPromptTimestamp } from "./prompt-time";
 
 type CheckPhoneManifestRow = CheckPhoneManifest;
@@ -13,6 +13,10 @@ export type CheckPhoneProjectionEntry = {
 };
 
 const CHECKPHONE_EVENT_PREFIX = "ai_phone_checkphone_events_";
+const XIAOHONGSHU_EVENT_PREFIX = "ai_phone_xiaohongshu_events_";
+const XIAOHONGSHU_READ_THREADS_PREFIX = "checkphone:xiaohongshu:readThreads:";
+const XIAOHONGSHU_STATE_KEY = "ai_phone_xiaohongshu_state_v1";
+const CHECKPHONE_STORAGE_CLEANUP_KEY = "ai_phone_checkphone_xiaohongshu_cleanup_v1";
 const MAX_CHECKPHONE_EVENTS_PER_CHARACTER = 120;
 
 registerDynamicPrefix(CHECKPHONE_EVENT_PREFIX);
@@ -118,6 +122,101 @@ export async function hydrateCheckPhoneStorage(): Promise<void> {
   } catch (error) {
     console.warn("[CheckPhoneStorage] hydrate error:", error);
   }
+}
+
+function removeXiaohongshuFromLayoutValue(raw: string): string | null {
+  try {
+    const value = JSON.parse(raw) as unknown;
+    let changed = false;
+    const removeId = (item: unknown): boolean => {
+      if (typeof item === "string") return item === "xiaohongshu";
+      if (!item || typeof item !== "object") return false;
+      return (item as { id?: unknown }).id === "xiaohongshu";
+    };
+    if (Array.isArray(value)) {
+      const next = value.filter(item => !removeId(item));
+      changed = next.length !== value.length;
+      return changed ? JSON.stringify(next) : null;
+    }
+    if (!value || typeof value !== "object") return null;
+    const record = value as Record<string, unknown>;
+    for (const [key, item] of Object.entries(record)) {
+      if (key.startsWith("page") && Array.isArray(item)) {
+        const next = item.filter(entry => !removeId(entry));
+        if (next.length !== item.length) {
+          record[key] = next;
+          changed = true;
+        }
+      } else if (key === "icons" && Array.isArray(item)) {
+        const next = item.filter(entry => !removeId(entry));
+        if (next.length !== item.length) {
+          record[key] = next;
+          changed = true;
+        }
+      }
+    }
+    return changed ? JSON.stringify(record) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 删除已移除的小红书留下的全部本地数据；可重复运行。调用方必须在 KV/Dexie 水合后调用。 */
+export async function cleanupRemovedXiaohongshuData(): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (kvGet(CHECKPHONE_STORAGE_CLEANUP_KEY) === "1") return;
+
+  for (const key of [XIAOHONGSHU_STATE_KEY, ...kvKeysWithPrefix(XIAOHONGSHU_EVENT_PREFIX), ...kvKeysWithPrefix(XIAOHONGSHU_READ_THREADS_PREFIX)]) {
+    kvRemove(key);
+  }
+  const legacyLocalStorageKeys: string[] = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key && (key === XIAOHONGSHU_STATE_KEY || key.startsWith(XIAOHONGSHU_EVENT_PREFIX) || key.startsWith(XIAOHONGSHU_READ_THREADS_PREFIX))) {
+      legacyLocalStorageKeys.push(key);
+    }
+  }
+  legacyLocalStorageKeys.forEach(key => localStorage.removeItem(key));
+
+  for (const key of kvKeysWithPrefix(CHECKPHONE_EVENT_PREFIX)) {
+    const raw = kvGet(key);
+    if (!raw) continue;
+    try {
+      const entries = JSON.parse(raw) as unknown;
+      if (!Array.isArray(entries)) continue;
+      const filtered = entries.filter(entry => (
+        !entry || typeof entry !== "object" || (entry as { appId?: unknown }).appId !== "xiaohongshu"
+      ));
+      if (filtered.length === 0) kvRemove(key);
+      else if (filtered.length !== entries.length) kvSet(key, JSON.stringify(filtered));
+    } catch {
+      // 保留无法识别的查手机记录，避免误删其他应用数据。
+    }
+  }
+
+  await db.snapshots.where("appId").equals("xiaohongshu").delete();
+  for (const row of await db.manifests.toArray()) {
+    const next = {
+      ...row,
+      dockAppIds: row.dockAppIds.filter(id => id !== "xiaohongshu"),
+      fixedAppIds: row.fixedAppIds.filter(id => id !== "xiaohongshu"),
+      optionalAppIds: row.optionalAppIds.filter(id => id !== "xiaohongshu"),
+      topAppIds: row.topAppIds.filter(id => id !== "xiaohongshu"),
+      allAppIds: row.allAppIds.filter(id => id !== "xiaohongshu"),
+    };
+    if (JSON.stringify(next) !== JSON.stringify(row)) {
+      manifestCache.set(row.characterId, next);
+      await db.manifests.put(next);
+    }
+  }
+
+  for (const key of ["ai_phone_icon_layout_v2", "ai_phone_icon_layout_v1", "ai_phone_dock_layout_v1", "ai_phone_desktop_folders_v1"]) {
+    const raw = kvGet(key);
+    if (!raw) continue;
+    const next = removeXiaohongshuFromLayoutValue(raw);
+    if (next) kvSet(key, next);
+  }
+  kvSet(CHECKPHONE_STORAGE_CLEANUP_KEY, "1");
 }
 
 export function readPhoneManifestCache(characterId: string): CheckPhoneManifest | null {

@@ -28,7 +28,6 @@ export type CheckPhoneBilingualTone =
   | "instagram"
   | "douyin"
   | "weibo"
-  | "xiaohongshu"
   | "douban"
   | "steam"
   | "reading"
