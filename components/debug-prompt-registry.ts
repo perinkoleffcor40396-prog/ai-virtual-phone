@@ -4,7 +4,6 @@ export type ExtraPromptAppId =
     | "dwelling"
     | "diary"
     | "notewall"
-    | "xiaohongshu"
     | "cocreate"
     | "shopping"
     | "interview"
@@ -22,7 +21,6 @@ export const EXTRA_PROMPT_APPS: ExtraPromptAppDefinition[] = [
     { id: "dwelling", label: "栖所", emptyText: "选择角色与栖所任务后点击「预览」" },
     { id: "diary", label: "日记", emptyText: "选择角色后点击「预览」查看日记 Prompt" },
     { id: "notewall", label: "便签墙", emptyText: "选择角色与便签墙任务后点击「预览」" },
-    { id: "xiaohongshu", label: "小红书", emptyText: "选择角色与小红书任务后点击「预览」" },
     { id: "cocreate", label: "共创", emptyText: "选择共创模式后点击「预览」" },
     { id: "shopping", label: "购物", emptyText: "选择购物任务后点击「预览」" },
     { id: "interview", label: "在场", emptyText: "选择角色与在场任务后点击「预览」" },

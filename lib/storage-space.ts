@@ -132,7 +132,6 @@ function makeStat(id: StorageCategoryId, bytes: number, count: number): StorageC
 type ChatMediaClass = "image" | "voice" | "file";
 
 function chatMediaClass(message: ChatMessage): ChatMediaClass | null {
-  if (isChatXiaohongshuShareImage(message)) return "image";
   if (isChatImageMessage(message)) {
     return message.mediaUrl || message.mediaData?.imageGenerationMediaRef ? "image" : null;
   }
@@ -158,15 +157,12 @@ function mediaRefBytes(ref: string | undefined, seen: Set<string>, mediaBytesByI
 
 function chatMessageMediaBytes(
   message: ChatMessage,
-  themeBytesById: Map<string, number>,
   mediaBytesById: Map<string, number>,
 ): number {
   const seen = new Set<string>();
   let bytes = 0;
   bytes += mediaRefBytes(message.mediaUrl, seen, mediaBytesById);
   bytes += mediaRefBytes(message.mediaData?.imageGenerationMediaRef, seen, mediaBytesById);
-  const assetId = message.mediaData?.xiaohongshuImageAssetId;
-  if (assetId) bytes += themeBytesById.get(assetId) ?? 0;
   return bytes;
 }
 
@@ -217,7 +213,7 @@ export async function scanStorageSpace(onProgress?: (detail: string) => void): P
   await chatDb.messages.each((message) => {
     const kind = chatMediaClass(message);
     if (!kind) return;
-    const bytes = chatMessageMediaBytes(message, themeBytesById, mediaBytesById);
+    const bytes = chatMessageMediaBytes(message, mediaBytesById);
     if (bytes <= 0) return;
     chatTotals[kind].bytes += bytes;
     chatTotals[kind].count += 1;
@@ -242,19 +238,6 @@ export async function scanStorageSpace(onProgress?: (detail: string) => void): P
     momentsCount += 1;
   }).catch(() => undefined);
   stats.push(makeStat("moments_images", momentsBytes, momentsCount));
-
-  onProgress?.("统计小红书图片…");
-  const xhsState = loadXiaohongshuState();
-  let xhsBytes = 0;
-  let xhsCount = 0;
-  for (const note of xhsState.notes) {
-    if (!note.imageAssetId) continue;
-    const bytes = themeBytesById.get(note.imageAssetId) ?? 0;
-    if (bytes <= 0) continue;
-    xhsBytes += bytes;
-    xhsCount += 1;
-  }
-  stats.push(makeStat("xiaohongshu_images", xhsBytes, xhsCount));
 
   onProgress?.("统计本地音乐…");
   const tracks = await loadAllTracks().catch(() => []);
@@ -345,26 +328,15 @@ async function clearChatCategory(kind: ChatMediaClass, keepDays?: number): Promi
   const messages = await chatDb.messages.toArray().catch(() => [] as ChatMessage[]);
   let cleared = 0;
   let freedBytes = 0;
-  let strippedThemeAssetRefs = false;
   for (const message of messages) {
     if (chatMediaClass(message) !== kind) continue;
     if (!isBeforeCutoff(message.createdAt, cutoff)) continue;
     if (kind === "image") {
-      if (isChatXiaohongshuShareImage(message)) {
-        freedBytes += await cleanChatXiaohongshuShareImage(message, nowIso).catch(() => 0);
-        strippedThemeAssetRefs = true;
-      } else {
-        freedBytes += await cleanChatImage(message, nowIso).catch(() => 0);
-      }
+      freedBytes += await cleanChatImage(message, nowIso).catch(() => 0);
     } else {
       freedBytes += await cleanChatGenericMedia(message, nowIso).catch(() => 0);
     }
     cleared += 1;
-  }
-  // 小红书分享图存在主题素材库里，剥掉引用后立刻回收孤儿素材，让释放真实发生。
-  if (strippedThemeAssetRefs) {
-    const orphan = await cleanupOrphanThemeAssets().catch(() => ({ deletedAssets: 0, freedBytes: 0 }));
-    freedBytes += orphan.freedBytes;
   }
   return { cleared, freedBytes };
 }
@@ -392,32 +364,6 @@ async function clearMomentsImages(keepDays?: number): Promise<StorageClearResult
   }
   if (cleared > 0 && typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("moments-updated"));
-  }
-  return { cleared, freedBytes };
-}
-
-async function clearXiaohongshuImages(keepDays?: number): Promise<StorageClearResult> {
-  const cutoff = cutoffMs(keepDays);
-  const nowIso = new Date().toISOString();
-  let state = loadXiaohongshuState();
-  let cleared = 0;
-  for (const note of state.notes) {
-    if (!note.imageAssetId) continue;
-    if (!isBeforeCutoff(note.createdAt, cutoff)) continue;
-    state = {
-      ...state,
-      notes: state.notes.map((item) => (item.id === note.id
-        ? { ...item, imageAssetId: undefined, imageCleanedAt: nowIso, updatedAt: nowIso }
-        : item)),
-    };
-    cleared += 1;
-  }
-  let freedBytes = 0;
-  if (cleared > 0) {
-    saveXiaohongshuState(state);
-    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("xiaohongshu-updated"));
-    const orphan = await cleanupOrphanThemeAssets().catch(() => ({ deletedAssets: 0, freedBytes: 0 }));
-    freedBytes = orphan.freedBytes;
   }
   return { cleared, freedBytes };
 }
@@ -517,7 +463,6 @@ export async function clearStorageCategory(
     case "chat_voice": return clearChatCategory("voice", options.keepDays);
     case "chat_media_files": return clearChatCategory("file", options.keepDays);
     case "moments_images": return clearMomentsImages(options.keepDays);
-    case "xiaohongshu_images": return clearXiaohongshuImages(options.keepDays);
     case "local_music": return clearLocalMusic(options.keepDays);
     case "dwelling_images": return clearDwellingImages();
     case "theme_assets": {

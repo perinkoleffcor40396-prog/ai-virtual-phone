@@ -194,7 +194,9 @@ export async function cleanupRemovedXiaohongshuData(): Promise<void> {
     }
   }
 
+  const removedSnapshots = await db.snapshots.where("appId").equals("xiaohongshu").toArray();
   await db.snapshots.where("appId").equals("xiaohongshu").delete();
+  removedSnapshots.forEach(row => snapshotCache.delete(row.id));
   for (const row of await db.manifests.toArray()) {
     const next = {
       ...row,
