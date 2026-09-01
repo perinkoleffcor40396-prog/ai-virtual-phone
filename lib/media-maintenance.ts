@@ -19,8 +19,6 @@ import {
   writeThemeAssetRecords,
   type ThemeAssetRecord,
 } from "./theme-storage";
-import { loadXiaohongshuState, saveXiaohongshuState } from "./xiaohongshu-storage";
-import type { XiaohongshuNote, XiaohongshuState } from "./xiaohongshu-types";
 
 export type MediaMaintenanceConfig = {
   enabled: boolean;
@@ -38,8 +36,6 @@ export type MediaMaintenanceResult = OrphanThemeCleanupResult & {
   chatImagesCleaned: number;
   momentImagesCompressed: number;
   momentImagesCleaned: number;
-  xiaohongshuImagesCompressed: number;
-  xiaohongshuImagesCleaned: number;
   musicTracksCleaned: number;
 };
 
@@ -391,46 +387,6 @@ async function runMomentImageMaintenance(result: MediaMaintenanceResult, nowMs: 
   }
 }
 
-function updateXiaohongshuStateNotes(
-  state: XiaohongshuState,
-  updater: (note: XiaohongshuNote) => XiaohongshuNote,
-): XiaohongshuState {
-  return {
-    ...state,
-    notes: state.notes.map(updater),
-  };
-}
-
-async function runXiaohongshuImageMaintenance(result: MediaMaintenanceResult, nowMs: number, nowIso: string): Promise<void> {
-  let state = loadXiaohongshuState();
-  let changed = false;
-
-  for (const note of state.notes) {
-    if (!note.imageAssetId) continue;
-    if (isOlderThan(note.createdAt, CLEAN_AFTER_MS, nowMs)) {
-      state = updateXiaohongshuStateNotes(state, item =>
-        item.id === note.id ? { ...item, imageAssetId: undefined, imageCleanedAt: nowIso, updatedAt: nowIso } : item
-      );
-      result.xiaohongshuImagesCleaned += 1;
-      changed = true;
-      continue;
-    }
-    if (note.imageCompressedAt || !isOlderThan(note.createdAt, COMPRESS_AFTER_MS, nowMs)) continue;
-    const compressed = await compressThemeAssetById(note.imageAssetId).catch(() => ({ changed: false, freedBytes: 0 }));
-    state = updateXiaohongshuStateNotes(state, item =>
-      item.id === note.id ? { ...item, imageCompressedAt: nowIso, updatedAt: nowIso } : item
-    );
-    result.freedBytes += compressed.freedBytes;
-    if (compressed.changed) result.xiaohongshuImagesCompressed += 1;
-    changed = true;
-  }
-
-  if (changed) {
-    saveXiaohongshuState(state);
-    window.dispatchEvent(new CustomEvent("xiaohongshu-updated"));
-  }
-}
-
 async function runMusicMaintenance(result: MediaMaintenanceResult, nowMs: number): Promise<void> {
   const tracks = await loadAllTracks();
   for (const track of tracks) {
@@ -727,7 +683,6 @@ export function formatMediaMaintenanceResult(result: MediaMaintenanceResult): st
   return [
     `聊天图片：压缩 ${result.chatImagesCompressed}，清理 ${result.chatImagesCleaned}`,
     `朋友圈图片：压缩 ${result.momentImagesCompressed}，清理 ${result.momentImagesCleaned}`,
-    `小红书图片：压缩 ${result.xiaohongshuImagesCompressed}，清理 ${result.xiaohongshuImagesCleaned}`,
     `本地音乐：清理 ${result.musicTracksCleaned}`,
     `孤儿主题素材：删除 ${result.deletedAssets}`,
     `预计释放 ${formatStorageBytes(result.freedBytes)}`,
@@ -745,7 +700,6 @@ export async function runMediaMaintenance(options: { force?: boolean; auto?: boo
     try {
       await runChatImageMaintenance(result, nowMs, startedAt);
       await runMomentImageMaintenance(result, nowMs, startedAt);
-      await runXiaohongshuImageMaintenance(result, nowMs, startedAt);
       await runMusicMaintenance(result, nowMs);
       const orphan = await cleanupOrphanThemeAssets();
       result.deletedAssets = orphan.deletedAssets;

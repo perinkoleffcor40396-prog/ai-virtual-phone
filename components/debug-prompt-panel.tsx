@@ -34,8 +34,6 @@ import { loadDiaryEntries } from "@/lib/diary-entry-storage";
 import { previewDiaryEntryPromptPayload } from "@/lib/diary-entry-engine";
 import { fetchNoteWall, fetchNoteWallComments } from "@/lib/notewall-client";
 import { previewNoteWallPromptPayload, type NoteWallReplyCandidate } from "@/lib/notewall-engine";
-import { loadXiaohongshuState } from "@/lib/xiaohongshu-storage";
-import { previewXiaohongshuPromptPayload } from "@/lib/xiaohongshu-engine";
 import { loadCoCreateSession } from "@/lib/cocreate-storage";
 import { previewCoCreatePromptPayload } from "@/lib/cocreate-engine";
 import { previewShoppingPromptPayload } from "@/lib/shopping-engine";
@@ -505,9 +503,6 @@ export function DebugPromptPanel() {
                     })))
                     : [];
                 result = await previewNoteWallPromptPayload(extraCharacterId, noteWallMode, wall.notes, candidates);
-            } else if (extraAppId === "xiaohongshu") {
-                const state = loadXiaohongshuState();
-                result = await previewXiaohongshuPromptPayload(extraCharacterId, xiaohongshuMode, state.notes, state.settings);
             } else if (extraAppId === "cocreate") {
                 const session = loadCoCreateSession(extraCharacterId);
                 result = await previewCoCreatePromptPayload(session, coCreateMode);
@@ -792,9 +787,6 @@ export function DebugPromptPanel() {
         }
         if (extraAppId === "notewall" && noteWallMode === "reply") {
             return "实际上下文以便签墙真实触发的便签和评论注入，此处仅取候选便签模拟";
-        }
-        if (extraAppId === "xiaohongshu") {
-            return "实际上下文以小红书当前触发的笔记、评论或@注入，此处仅取现有数据模拟";
         }
         if (extraAppId === "cocreate") {
             return "实际上下文以共创当前会话和刚发送内容注入，此处仅基于已保存会话模拟";
