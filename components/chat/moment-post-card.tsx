@@ -145,7 +145,11 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
         }
     };
 
-    const openPostEditor = () => {
+    const openPostEditor = (event?: React.MouseEvent) => {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
         setPostContentDraft(post.content);
         setPostPhotoDescDraft(post.photoDescription || "");
         setPostUseReferenceDraft(post.photoUseReferenceImage === true);
@@ -308,7 +312,9 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                             <button
                                 type="button"
                                 data-danger="true"
-                                onClick={() => {
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
                                     setShowPostActions(false);
                                     handleDelete();
                                 }}
@@ -629,6 +635,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                                                             title="编辑"
                                                             aria-label="编辑评论"
                                                             onClick={(e) => {
+                                                                e.preventDefault();
                                                                 e.stopPropagation();
                                                                 openCommentEditor(root);
                                                             }}
@@ -641,6 +648,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                                                             title="删除"
                                                             aria-label="删除评论"
                                                             onClick={(e) => {
+                                                                e.preventDefault();
                                                                 e.stopPropagation();
                                                                 setDeleteCommentTarget(root);
                                                             }}
@@ -714,6 +722,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                                                                             title="编辑"
                                                                             aria-label="编辑评论"
                                                                             onClick={(e) => {
+                                                                                e.preventDefault();
                                                                                 e.stopPropagation();
                                                                                 openCommentEditor(reply);
                                                                             }}
@@ -726,6 +735,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                                                                             title="删除"
                                                                             aria-label="删除评论"
                                                                             onClick={(e) => {
+                                                                                e.preventDefault();
                                                                                 e.stopPropagation();
                                                                                 setDeleteCommentTarget(reply);
                                                                             }}
