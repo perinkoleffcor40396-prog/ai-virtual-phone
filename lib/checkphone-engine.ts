@@ -5588,10 +5588,34 @@ export type PhoneBlockParseResult = {
 
 function parsePhoneDirection(value: string): CheckPhonePhonePayload["recents"][number]["direction"] | "" {
   const trimmed = value.trim();
-  if (trimmed === "来电" || trimmed.toLowerCase() === "incoming") return "incoming";
-  if (trimmed === "去电" || trimmed.toLowerCase() === "outgoing") return "outgoing";
-  if (trimmed === "未接" || trimmed === "未接来电" || trimmed.toLowerCase() === "missed") return "missed";
+  if (trimmed === "来电" || trimmed === "來電" || trimmed.toLowerCase() === "incoming") return "incoming";
+  if (trimmed === "去电" || trimmed === "去電" || trimmed.toLowerCase() === "outgoing") return "outgoing";
+  if (trimmed === "未接" || trimmed === "未接来电" || trimmed === "未接來電" || trimmed.toLowerCase() === "missed") return "missed";
   return "";
+}
+
+function normalizePhoneBlockLabels(text: string): string {
+  const replacements: Array<[RegExp, string]> = [
+    [/^(\s*#\s*)最近通話(\s*)$/gm, "$1最近通话$2"],
+    [/^(\s*#\s*)聯絡人(\s*)$/gm, "$1联系人$2"],
+    [/^(\s*#\s*)常用聯絡人(\s*)$/gm, "$1常用联系人$2"],
+    [/^(\s*#\s*)語音信箱(\s*)$/gm, "$1语音信箱$2"],
+    [/^(\s*##\s*)通話(\d+\s*)$/gm, "$1通话$2"],
+    [/^(\s*##\s*)聯絡人(\d+\s*)$/gm, "$1联系人$2"],
+    [/^(\s*##\s*)留言(\d+\s*)$/gm, "$1留言$2"],
+    [/^(\s*\[)姓名(\]\s*)/gm, "$1姓名$2"],
+    [/^(\s*\[)時間(\]\s*)/gm, "$1时间$2"],
+    [/^(\s*\[)時長(\]\s*)/gm, "$1时长$2"],
+    [/^(\s*\[)方向(\]\s*)/gm, "$1方向$2"],
+    [/^(\s*\[)內容(\]\s*)/gm, "$1内容$2"],
+    [/^(\s*\[)內心(\]\s*)/gm, "$1内心$2"],
+    [/^(\s*\[)標籤(\]\s*)/gm, "$1标签$2"],
+    [/^(\s*\[)備註(\]\s*)/gm, "$1备注$2"],
+    [/^(\s*\[)標記(\]\s*)/gm, "$1标记$2"],
+    [/^(\s*\[)轉寫(\]\s*)/gm, "$1转写$2"],
+  ];
+
+  return replacements.reduce((source, [pattern, replacement]) => source.replace(pattern, replacement), text);
 }
 
 function parsePhoneSectionBlocks(
@@ -5622,7 +5646,7 @@ function parsePhoneSectionBlocks(
 }
 
 function parsePhoneBlockPayload(text: string): PhoneBlockParseResult {
-  const source = stripJsonWrapperNoise(text).replace(/\r/g, "").trim();
+  const source = normalizePhoneBlockLabels(stripJsonWrapperNoise(text).replace(/\r/g, "").trim());
   if (!source) return { parsed: null, sanitizedCandidate: "", parseMode: "failed", parseError: "LLM 返回为空" };
 
   const sectionMatches = [...source.matchAll(/^#\s*(最近通话|联系人|常用联系人|语音信箱)\s*$/gm)];
