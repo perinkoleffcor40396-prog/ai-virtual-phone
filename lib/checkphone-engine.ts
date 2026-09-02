@@ -4889,6 +4889,39 @@ export async function generateCheckPhonePhotos(
   }
 }
 
+function normalizeChatSupplementalBlockLabels(text: string): string {
+  const replacements: Array<[RegExp, string]> = [
+    [/^(\s*#\s*)補充會話(\d+\s*)$/gm, "$1补充会话$2"],
+    [/^(\s*#\s*)補充群聊(\d+\s*)$/gm, "$1补充群聊$2"],
+    [/^(\s*#\s*)補充動態(\d+\s*)$/gm, "$1补充动态$2"],
+    [/^(\s*#\s*)補充聯絡人(\d+\s*)$/gm, "$1补充联系人$2"],
+    [/^(\s*\[)名稱(\]\s*)/gm, "$1名称$2"],
+    [/^(\s*\[)靜音(\]\s*)/gm, "$1静音$2"],
+    [/^(\s*\[)置頂(\]\s*)/gm, "$1置顶$2"],
+    [/^(\s*\[)標籤(\]\s*)/gm, "$1标签$2"],
+    [/^(\s*\[)關係(\]\s*)/gm, "$1关系$2"],
+    [/^(\s*\[)備註(\]\s*)/gm, "$1备注$2"],
+    [/^(\s*\[)人數(\]\s*)/gm, "$1人数$2"],
+    [/^(\s*\[)活躍(\]\s*)/gm, "$1活跃$2"],
+    [/^(\s*\[)標記(\]\s*)/gm, "$1标记$2"],
+    [/^(\s*\[)時間(\]\s*)/gm, "$1时间$2"],
+    [/^(\s*\[)正文(\]\s*)/gm, "$1正文$2"],
+    [/^(\s*\[)媒體(\]\s*)/gm, "$1媒体$2"],
+    [/^(\s*\[)點讚(\]\s*)/gm, "$1点赞$2"],
+    [/^(\s*\[)評論數(\]\s*)/gm, "$1评论数$2"],
+    [/^(\s*\[)消息(\d+)時間(\]\s*)/gm, "$1消息$2时间$3"],
+    [/^(\s*\[)消息(\d+)正文(\]\s*)/gm, "$1消息$2正文$3"],
+    [/^(\s*\[)消息(\d+)方向(\]\s*)/gm, "$1消息$2方向$3"],
+    [/^(\s*\[)消息(\d+)作者(\]\s*)/gm, "$1消息$2作者$3"],
+    [/^(\s*\[)評論(\d+)作者(\]\s*)/gm, "$1评论$2作者$3"],
+    [/^(\s*\[)評論(\d+)時間(\]\s*)/gm, "$1评论$2时间$3"],
+    [/^(\s*\[)評論(\d+)內容(\]\s*)/gm, "$1评论$2内容$3"],
+    [/^(\s*\[)評論(\d+)回覆對象(\]\s*)/gm, "$1评论$2回复对象$3"],
+  ];
+
+  return replacements.reduce((source, [pattern, replacement]) => source.replace(pattern, replacement), text);
+}
+
 function parseChatSupplementalMessages(
   fields: Record<string, string>,
   prefix: string,
@@ -4944,7 +4977,7 @@ function parseChatMomentComments(
 }
 
 function parseChatBlockPayload(text: string): PhoneBlockParseResult {
-  const source = stripJsonWrapperNoise(text).replace(/\r/g, "").trim();
+  const source = normalizeChatSupplementalBlockLabels(stripJsonWrapperNoise(text).replace(/\r/g, "").trim());
   if (!source) return { parsed: null, sanitizedCandidate: "", parseMode: "failed", parseError: "LLM 返回为空" };
 
   const supplementalConversations = extractTopLevelTaggedBlocks(source, "补充会话").map((entry) => ({
