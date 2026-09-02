@@ -1131,6 +1131,51 @@
 }
 .feed-post svg { flex-shrink: 0; }
 
+.feed-post-more-btn,
+.feed-post-delete-btn,
+.feed-comment-icon-button,
+.feed-post-action-menu button {
+  position: relative;
+  z-index: 3;
+}
+
+.feed-inline-bilingual,
+.feed-inline-text,
+.feed-inline-original,
+.feed-inline-translation {
+  position: static;
+  display: inline;
+  max-width: 100%;
+}
+
+.feed-inline-translation-toggle {
+  -webkit-appearance: none;
+  appearance: none;
+  position: static !important;
+  inset: auto !important;
+  display: inline-flex !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: max-content !important;
+  max-height: none !important;
+  margin: 0 0.25em !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  vertical-align: baseline;
+  align-items: baseline;
+  justify-content: flex-start;
+  font: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
 .feed-polaroid {
   margin-top: 8px;
   display: inline-block;

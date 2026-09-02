@@ -797,7 +797,7 @@ function MomentInlineBilingualText({
             {" "}
             <button
                 type="button"
-                className="feed-inline-translation-toggle chat-bilingual-toggle text-[var(--c-action-blue,#246bfd)] opacity-80"
+                className="feed-inline-translation-toggle text-[var(--c-action-blue,#246bfd)] opacity-80"
                 onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
