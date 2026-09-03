@@ -761,8 +761,8 @@ export function CheckPhoneChatPage({
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedConversationId(null);
       setSelectedGroupId(null);
     }

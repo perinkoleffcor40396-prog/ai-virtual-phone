@@ -157,8 +157,8 @@ export function CheckPhonePhonePage({ character, onBack }: CheckPhonePhonePagePr
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedCallId(null);
       setSelectedContactId(null);
       setSelectedVoicemailId(null);

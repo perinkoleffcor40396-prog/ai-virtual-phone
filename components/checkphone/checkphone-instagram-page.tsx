@@ -138,8 +138,8 @@ export function CheckPhoneInstagramPage({ character, onBack }: CheckPhoneInstagr
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedPostId(null);
       setCommentSheetPostId(null);
       setSelectedHighlightId(null);

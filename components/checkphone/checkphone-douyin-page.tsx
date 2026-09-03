@@ -250,9 +250,9 @@ export function CheckPhoneDouyinPage({
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      snapshotRef.current = nextSnapshot;
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      snapshotRef.current = savedSnapshot;
+      setSnapshot(savedSnapshot);
       setSelectedVideoId(null);
       setCommentsOpen(false);
       setCaptionExpanded(false);

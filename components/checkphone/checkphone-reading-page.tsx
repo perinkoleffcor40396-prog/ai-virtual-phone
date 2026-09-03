@@ -147,8 +147,8 @@ export function CheckPhoneReadingPage({ character, onBack }: CheckPhoneReadingPa
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedBookId(null);
     }
     setError(nextError ?? null);

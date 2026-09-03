@@ -132,8 +132,8 @@ export function CheckPhoneTakeoutPage({ character, onBack }: CheckPhoneTakeoutPa
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedOrderId(null);
       setSelectedCategory("全部");
     }

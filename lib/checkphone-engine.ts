@@ -709,6 +709,16 @@ function formatSnapshotSummary(payload: unknown): string {
       })
       .filter(Boolean)
       .slice(0, 4);
+    const groupSummary = record.groups
+      .map((item) => {
+        if (!item || typeof item !== "object") return "";
+        const group = item as Record<string, unknown>;
+        const name = typeof group.name === "string" ? group.name.trim() : "";
+        const preview = typeof group.preview === "string" ? group.preview.trim() : "";
+        return [name, preview].filter(Boolean).join("：");
+      })
+      .filter(Boolean)
+      .slice(0, 3);
     const momentSummary = record.momentsFeed
       .map((item) => {
         if (!item || typeof item !== "object") return "";
@@ -719,7 +729,23 @@ function formatSnapshotSummary(payload: unknown): string {
       })
       .filter(Boolean)
       .slice(0, 3);
-    return [...conversationSummary, ...momentSummary].join("\n");
+    const contactSummary = record.contacts
+      .map((item) => {
+        if (!item || typeof item !== "object") return "";
+        const contact = item as Record<string, unknown>;
+        const name = typeof contact.name === "string" ? contact.name.trim() : "";
+        const relationLabel = typeof contact.relationLabel === "string" ? contact.relationLabel.trim() : "";
+        const note = typeof contact.note === "string" ? contact.note.trim() : "";
+        return [name, relationLabel, note].filter(Boolean).join("｜");
+      })
+      .filter(Boolean)
+      .slice(0, 8);
+    return [
+      conversationSummary.length > 0 ? `[补充会话]\n${conversationSummary.join("\n")}` : "",
+      groupSummary.length > 0 ? `[补充群聊]\n${groupSummary.join("\n")}` : "",
+      momentSummary.length > 0 ? `[补充朋友圈]\n${momentSummary.join("\n")}` : "",
+      contactSummary.length > 0 ? `[补充联系人]\n${contactSummary.join("\n")}` : "",
+    ].filter(Boolean).join("\n");
   }
   if (record.headline && Array.isArray(record.accounts) && Array.isArray(record.activities)) {
     const headline = record.headline && typeof record.headline === "object" ? record.headline as Record<string, unknown> : null;
@@ -768,6 +794,17 @@ function formatSnapshotSummary(payload: unknown): string {
       })
       .filter(Boolean)
       .slice(0, 4);
+    const contactSummary = record.contacts
+      .map((item) => {
+        if (!item || typeof item !== "object") return "";
+        const contact = item as Record<string, unknown>;
+        const name = typeof contact.name === "string" ? contact.name.trim() : "";
+        const tagLabel = typeof contact.tagLabel === "string" ? contact.tagLabel.trim() : "";
+        const note = typeof contact.note === "string" ? contact.note.trim() : "";
+        return [name, tagLabel, note].filter(Boolean).join("｜");
+      })
+      .filter(Boolean)
+      .slice(0, 10);
     const voicemailSummary = record.voicemails
       .map((item) => {
         if (!item || typeof item !== "object") return "";
@@ -779,7 +816,11 @@ function formatSnapshotSummary(payload: unknown): string {
       })
       .filter(Boolean)
       .slice(0, 2);
-    return [...recentSummary, ...voicemailSummary].join("\n");
+    return [
+      recentSummary.length > 0 ? `[最近通话]\n${recentSummary.join("\n")}` : "",
+      contactSummary.length > 0 ? `[联系人]\n${contactSummary.join("\n")}` : "",
+      voicemailSummary.length > 0 ? `[语音信箱]\n${voicemailSummary.join("\n")}` : "",
+    ].filter(Boolean).join("\n");
   }
   if (
     record.stats &&

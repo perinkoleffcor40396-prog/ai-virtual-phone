@@ -90,8 +90,8 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedAlbumId(null);
       setSelectedPhotoId(null);
       setHomeSection("featured");

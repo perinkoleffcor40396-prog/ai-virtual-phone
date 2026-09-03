@@ -188,8 +188,8 @@ export function CheckPhoneSteamPage({ character, onBack }: CheckPhoneSteamPagePr
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedEntryId(null);
     }
     setError(nextError ?? null);

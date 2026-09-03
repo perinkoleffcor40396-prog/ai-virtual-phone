@@ -313,8 +313,8 @@ export function CheckPhoneYoutubePage({ character, onBack }: CheckPhoneYoutubePa
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setExpandedEntryKeys([]);
       setView("home");
     }

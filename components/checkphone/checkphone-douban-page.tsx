@@ -205,8 +205,8 @@ export function CheckPhoneDoubanPage({ character, onBack }: CheckPhoneDoubanPage
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
     }
     setError(nextError ?? null);
     setDebugRawOutput(nextDebugRawOutput ?? null);

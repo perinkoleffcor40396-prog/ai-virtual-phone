@@ -266,8 +266,8 @@ export function CheckPhoneXPage({ character, onBack }: CheckPhoneXPageProps) {
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setExpandedEntryId(null);
     }
     setError(nextError ?? null);

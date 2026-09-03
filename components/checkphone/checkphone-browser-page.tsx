@@ -85,8 +85,8 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
     }
     setError(nextError ?? null);
     setDebugRawOutput(nextDebugRawOutput ?? null);

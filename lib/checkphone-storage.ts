@@ -105,6 +105,95 @@ function recordCheckPhoneSnapshotEvent(snapshot: CheckPhoneSnapshot): void {
   saveProjectionEventsByKey(key, [entry, ...current.filter(item => item.id !== entry.id)]);
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergeTextKey(...parts: unknown[]): string {
+  return parts
+    .map((part) => String(part ?? "").trim().toLowerCase())
+    .filter(Boolean)
+    .join("::");
+}
+
+function getCheckPhoneMergeKey(item: Record<string, unknown>, fallbackIndex: number): string {
+  const hasMessages = Array.isArray(item.messages);
+  const stablePersonKey = mergeTextKey(item.name, item.sender, item.senderName, item.authorName, item.authorLabel);
+  if (hasMessages && stablePersonKey) return stablePersonKey;
+
+  const timestamp = mergeTextKey(item.createdAt, item.timeLabel, item.updatedLabel, item.shotAtLabel, item.lastPlayedAt);
+  const titleKey = mergeTextKey(item.name, item.sender, item.senderName, item.authorName, item.authorLabel, item.title, item.shopName, item.subject, item.urlLabel);
+  if (timestamp && titleKey) return mergeTextKey(titleKey, timestamp);
+
+  if (stablePersonKey && ("tagLabel" in item || "relationLabel" in item || "note" in item || "accentLabel" in item)) {
+    return stablePersonKey;
+  }
+
+  const contentKey = mergeTextKey(
+    item.communityName,
+    item.postTitle,
+    item.body,
+    item.caption,
+    item.text,
+    item.transcript,
+  );
+  if (timestamp && contentKey) return mergeTextKey(contentKey, timestamp);
+  if (contentKey) return contentKey;
+
+  const id = mergeTextKey(item.id);
+  return id || `#${fallbackIndex}`;
+}
+
+function mergeCheckPhoneValues(previous: unknown, next: unknown): unknown {
+  if (Array.isArray(previous) && Array.isArray(next)) {
+    return mergeCheckPhoneArrays(previous, next);
+  }
+
+  if (isPlainRecord(previous) && isPlainRecord(next)) {
+    const merged: Record<string, unknown> = { ...previous, ...next };
+    for (const [key, value] of Object.entries(next)) {
+      merged[key] = key in previous ? mergeCheckPhoneValues(previous[key], value) : value;
+    }
+    return merged;
+  }
+
+  return next ?? previous;
+}
+
+const CHECKPHONE_MERGED_ARRAY_LIMIT = 40;
+
+function mergeCheckPhoneArrays(previous: unknown[], next: unknown[]): unknown[] {
+  if (!previous.some(isPlainRecord) || !next.some(isPlainRecord)) {
+    return next.length > 0 ? next : previous;
+  }
+
+  const mergedByKey = new Map<string, unknown>();
+  const order: string[] = [];
+  const append = (item: unknown, index: number, preferNext: boolean) => {
+    if (!isPlainRecord(item)) return;
+    const key = getCheckPhoneMergeKey(item, index);
+    const existing = mergedByKey.get(key);
+    if (!existing) {
+      mergedByKey.set(key, item);
+      order.push(key);
+      return;
+    }
+    mergedByKey.set(key, preferNext ? mergeCheckPhoneValues(existing, item) : mergeCheckPhoneValues(item, existing));
+  };
+
+  next.forEach((item, index) => append(item, index, true));
+  previous.forEach((item, index) => append(item, index, false));
+  return order.map((key) => mergedByKey.get(key)).filter(Boolean).slice(0, CHECKPHONE_MERGED_ARRAY_LIMIT);
+}
+
+function mergeCheckPhoneSnapshotPayload(previous: CheckPhoneSnapshot | undefined, next: CheckPhoneSnapshot): CheckPhoneSnapshot {
+  if (!previous || previous.characterId !== next.characterId || previous.appId !== next.appId) return next;
+  return {
+    ...next,
+    payload: mergeCheckPhoneValues(previous.payload, next.payload),
+  };
+}
+
 export async function hydrateCheckPhoneStorage(): Promise<void> {
   if (hydrated || typeof window === "undefined") return;
   hydrated = true;
@@ -288,14 +377,26 @@ export async function loadPhoneSnapshot<AppPayload = unknown>(
   return null;
 }
 
-export async function savePhoneSnapshot<AppPayload = unknown>(snapshot: CheckPhoneSnapshot<AppPayload>): Promise<void> {
-  snapshotCache.set(snapshot.id, snapshot as CheckPhoneSnapshot);
+export async function savePhoneSnapshot<AppPayload = unknown>(snapshot: CheckPhoneSnapshot<AppPayload>): Promise<CheckPhoneSnapshot<AppPayload>> {
+  const key = snapshotKey(snapshot.characterId, snapshot.appId);
+  let previous = snapshotCache.get(key);
+  if (!previous) {
+    try {
+      previous = await db.snapshots.get(key);
+    } catch (error) {
+      console.warn("[CheckPhoneStorage] load previous snapshot before save error:", error);
+    }
+  }
+
+  const mergedSnapshot = mergeCheckPhoneSnapshotPayload(previous, snapshot as CheckPhoneSnapshot) as CheckPhoneSnapshot<AppPayload>;
+  snapshotCache.set(key, mergedSnapshot as CheckPhoneSnapshot);
   try {
-    await db.snapshots.put(snapshot as CheckPhoneSnapshot);
+    await db.snapshots.put(mergedSnapshot as CheckPhoneSnapshot);
   } catch (error) {
     console.warn("[CheckPhoneStorage] save snapshot error:", error);
   }
-  recordCheckPhoneSnapshotEvent(snapshot as CheckPhoneSnapshot);
+  recordCheckPhoneSnapshotEvent(mergedSnapshot as CheckPhoneSnapshot);
+  return mergedSnapshot;
 }
 
 export async function clearPhoneSnapshot(characterId: string, appId: CheckPhoneAppId): Promise<void> {

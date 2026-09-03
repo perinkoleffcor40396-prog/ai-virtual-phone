@@ -182,8 +182,8 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedOrderId(null);
       setSelectedProduct(null);
       setTranslationPreview(null);

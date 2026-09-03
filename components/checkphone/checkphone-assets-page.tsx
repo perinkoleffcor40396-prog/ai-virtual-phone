@@ -192,8 +192,8 @@ export function CheckPhoneAssetsPage({ character, onBack }: CheckPhoneAssetsPage
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setActiveAccountId(nextSnapshot.payload.accounts[0]?.id ?? null);
       setSelectedActivityId(null);
     }

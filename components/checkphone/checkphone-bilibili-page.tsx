@@ -156,8 +156,8 @@ export function CheckPhoneBilibiliPage({ character, onBack }: CheckPhoneBilibili
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedEntryId(null);
     }
     setError(nextError ?? null);

@@ -280,8 +280,8 @@ export function CheckPhoneRedditPage({ character, onBack }: CheckPhoneRedditPage
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedTab("posts");
     }
     setError(nextError ?? null);

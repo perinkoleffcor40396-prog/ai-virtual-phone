@@ -446,8 +446,8 @@ export function CheckPhoneWeiboPage({
           summary,
           payload,
         };
-        await savePhoneSnapshot(nextSnapshot);
-        setSnapshot(nextSnapshot);
+        const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+        setSnapshot(savedSnapshot);
         setSelectedPostId(null);
         setSelectedThreadId(null);
       }

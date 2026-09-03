@@ -322,8 +322,8 @@ export function CheckPhoneMusicPage({ character, onBack }: CheckPhoneMusicPagePr
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedPlaylistId(null);
       setInnerFloats([]);
     }

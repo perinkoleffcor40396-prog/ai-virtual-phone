@@ -112,8 +112,8 @@ export function CheckPhoneEmailPage({ character, onBack }: CheckPhoneEmailPagePr
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedEmailId(null);
     }
     setError(nextError ?? null);

@@ -212,8 +212,8 @@ export function CheckPhoneTelegramPage({ character, onBack }: CheckPhoneTelegram
         summary,
         payload,
       };
-      await savePhoneSnapshot(nextSnapshot);
-      setSnapshot(nextSnapshot);
+      const savedSnapshot = await savePhoneSnapshot(nextSnapshot);
+      setSnapshot(savedSnapshot);
       setSelectedThreadId(null);
     }
     setError(nextError ?? null);
