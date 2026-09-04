@@ -10,7 +10,7 @@ import { ConfirmDialog } from "@/components/ui/modal";
 import { Toggle, Input } from "@/components/ui/form";
 import { Alert } from "@/components/ui/feedback";
 
-const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI"]);
+const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI", "ElevenLabs"]);
 const MINIMAX_BASE_URL_OPTIONS = [
     { id: "cn", label: "国内版", baseUrl: "https://api.minimaxi.com/v1" },
     { id: "global", label: "海外版", baseUrl: "https://api.minimax.io/v1" },
@@ -26,10 +26,38 @@ const MINIMAX_PITCH_MIN = -12;
 const MINIMAX_PITCH_MAX = 12;
 const MINIMAX_PITCH_STEP = 1;
 const DEFAULT_SPEECH_PITCH = 0;
+const ELEVENLABS_SPEED_MIN = 0.7;
+const ELEVENLABS_SPEED_MAX = 1.2;
+const ELEVENLABS_SPEED_STEP = 0.1;
+const DEFAULT_ELEVENLABS_STABILITY = 0.5;
+const DEFAULT_ELEVENLABS_SIMILARITY = 0.75;
+const DEFAULT_ELEVENLABS_STYLE = 0;
+const DEFAULT_ELEVENLABS_SPEAKER_BOOST = true;
+const DEFAULT_ELEVENLABS_MODEL = "eleven_flash_v2_5";
+const ELEVENLABS_MODELS = [
+    { id: "eleven_v3", name: "Eleven v3（表现力最强）" },
+    { id: "eleven_multilingual_v2", name: "Multilingual v2（高质量多语言）" },
+    { id: "eleven_flash_v2_5", name: "Flash v2.5（低延迟，推荐聊天）" },
+    { id: "eleven_turbo_v2_5", name: "Turbo v2.5（低延迟）" },
+];
+const ELEVENLABS_LANGUAGE_OPTIONS = [
+    { value: "", label: "自动（不指定语言）" },
+    { value: "en", label: "English" },
+    { value: "zh", label: "中文" },
+    { value: "yue", label: "粤语" },
+    { value: "ja", label: "日本語" },
+    { value: "ko", label: "한국어" },
+    { value: "fr", label: "Français" },
+    { value: "de", label: "Deutsch" },
+    { value: "es", label: "Español" },
+    { value: "it", label: "Italiano" },
+    { value: "pt", label: "Português" },
+];
 const VOICE_PROVIDER_OPTIONS = [
     { value: "OpenAI", label: "OpenAI TTS" },
     { value: "MinimaxCN", label: "Minimax 语音国内版" },
     { value: "MinimaxGlobal", label: "Minimax 语音海外版" },
+    { value: "ElevenLabs", label: "ElevenLabs" },
 ];
 
 const DEFAULT_VOICE_CONFIGS: VoiceApiConfig[] = [
@@ -182,7 +210,9 @@ function uniqueOptions(options: VoiceOption[]): VoiceOption[] {
 }
 
 function defaultVoiceOptions(provider: string): VoiceOption[] {
-    return provider === "OpenAI" ? DEFAULT_OPENAI_VOICES : DEFAULT_MINIMAX_VOICES;
+    if (provider === "OpenAI") return DEFAULT_OPENAI_VOICES;
+    if (provider === "ElevenLabs") return [];
+    return DEFAULT_MINIMAX_VOICES;
 }
 
 function voiceOptionsForConfig(config: VoiceApiConfig, fetchedVoices: Record<string, VoiceOption[]>): VoiceOption[] {
@@ -222,6 +252,7 @@ function makeCloneVoiceId(config: VoiceApiConfig): string {
 
 function providerSelectValue(config: VoiceApiConfig): string {
     if (config.provider === "OpenAI") return "OpenAI";
+    if (config.provider === "ElevenLabs") return "ElevenLabs";
     return config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "MinimaxGlobal" : "MinimaxCN";
 }
 
@@ -313,6 +344,22 @@ export function VoiceSettings() {
             });
             setManualModelIds(prev => ({ ...prev, [id]: true }));
             setManualVoiceIds(prev => ({ ...prev, [id]: false }));
+            return;
+        }
+        if (providerOption === "ElevenLabs") {
+            updateConfig(id, {
+                provider: "ElevenLabs",
+                baseUrl: "https://api.elevenlabs.io/v1",
+                model: current?.provider === "ElevenLabs" ? (current?.model || DEFAULT_ELEVENLABS_MODEL) : DEFAULT_ELEVENLABS_MODEL,
+                defaultVoice: current?.provider === "ElevenLabs" ? (current?.defaultVoice || "") : "",
+                speechSpeed: current?.provider === "ElevenLabs" ? (current?.speechSpeed ?? 1.0) : 1.0,
+                elevenLabsStability: current?.provider === "ElevenLabs" ? (current?.elevenLabsStability ?? DEFAULT_ELEVENLABS_STABILITY) : DEFAULT_ELEVENLABS_STABILITY,
+                elevenLabsSimilarity: current?.provider === "ElevenLabs" ? (current?.elevenLabsSimilarity ?? DEFAULT_ELEVENLABS_SIMILARITY) : DEFAULT_ELEVENLABS_SIMILARITY,
+                elevenLabsStyle: current?.provider === "ElevenLabs" ? (current?.elevenLabsStyle ?? DEFAULT_ELEVENLABS_STYLE) : DEFAULT_ELEVENLABS_STYLE,
+                elevenLabsSpeakerBoost: current?.provider === "ElevenLabs" ? (current?.elevenLabsSpeakerBoost ?? DEFAULT_ELEVENLABS_SPEAKER_BOOST) : DEFAULT_ELEVENLABS_SPEAKER_BOOST,
+            });
+            setManualModelIds(prev => ({ ...prev, [id]: false }));
+            setManualVoiceIds(prev => ({ ...prev, [id]: true }));
             return;
         }
         const wasMinimax = current?.provider === "Minimax";
@@ -445,67 +492,46 @@ export function VoiceSettings() {
                 name: `克隆音色 (${nextVoiceId})`,
                 createdAt: Date.now(),
             };
-            updateConfig(config.id, {
-                defaultVoice: nextVoiceId,
-                customVoices: uniqueOptions([clonedVoice, ...(config.customVoices || [])]),
-            });
-            setFetchedVoices(prev => {
-                const current = prev[config.id] || [];
-                return {
-                    ...prev,
-                    [config.id]: uniqueOptions([clonedVoice, ...current]),
-                };
-            });
-            setCloneTargetId(null);
-            setCloneVoiceId("");
-            setCloneFile(null);
-            setCloneError("");
+            updateConfig(config.id, { defaultVoice: nextVoiceId, customVoices: [...(config.customVoices || []).filter(v => v.id !== nextVoiceId), clonedVoice] });
+            setFetchedVoices(prev => ({ ...prev, [config.id]: uniqueOptions([...(prev[config.id] || []), clonedVoice]) }));
             setManualVoiceIds(prev => ({ ...prev, [config.id]: false }));
-        } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : String(error);
-            setCloneError(msg);
+            closeCloneModal();
+        } catch (error) {
+            setCloneError(error instanceof Error ? error.message : "克隆失败，请稍后重试");
         } finally {
             setIsCloning(false);
         }
     };
 
     const fetchVoices = async (config: VoiceApiConfig) => {
+        if (!config.apiKey.trim()) {
+            setFetchError(prev => ({ ...prev, [config.id]: `${config.provider} API Key 未配置` }));
+            return;
+        }
         setIsFetching(prev => ({ ...prev, [config.id]: true }));
         setFetchError(prev => ({ ...prev, [config.id]: "" }));
-
         try {
             if (config.provider === "Minimax") {
-                if (!config.apiKey.trim()) {
-                    setFetchedVoices(prev => ({ ...prev, [config.id]: config.customVoices || [] }));
-                    setFetchError(prev => ({ ...prev, [config.id]: "填写 API Key 后可同步账户已克隆音色" }));
-                    return;
-                }
-                const response = await fetch("/api/voice/minimax-voices", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        apiKey: config.apiKey,
-                        baseUrl: config.baseUrl || DEFAULT_MINIMAX_BASE_URL,
-                    }),
+                const base = (config.baseUrl || DEFAULT_MINIMAX_BASE_URL).replace(/\/$/, "");
+                const response = await fetch(`${base}/voice/clone`, {
+                    headers: { Authorization: `Bearer ${config.apiKey.trim()}` },
                 });
-                const data = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                    throw new Error(data.message || data.error || `同步失败 (${response.status})`);
-                }
-                const clonedVoices = Array.isArray(data.voices) ? data.voices as VoiceOption[] : [];
-                const nextCustomVoices = uniqueOptions([...clonedVoices, ...(config.customVoices || [])]);
-                updateConfig(config.id, { customVoices: nextCustomVoices });
-                setFetchedVoices(prev => ({ ...prev, [config.id]: nextCustomVoices }));
-
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                const rawVoices = Array.isArray(data?.voices) ? data.voices : Array.isArray(data?.data) ? data.data : [];
+                const voices = rawVoices.map((voice: any) => ({
+                    id: String(voice.voice_id || voice.id || ""),
+                    name: String(voice.name || voice.voice_name || voice.voice_id || voice.id || ""),
+                    createdAt: typeof voice.created_at === "number" ? voice.created_at : undefined,
+                })).filter((voice: VoiceOption) => voice.id);
+                setFetchedVoices(prev => ({ ...prev, [config.id]: uniqueOptions(voices) }));
             } else if (config.provider === "OpenAI") {
                 setFetchedVoices(prev => ({ ...prev, [config.id]: DEFAULT_OPENAI_VOICES }));
             } else {
                 throw new Error("该服务商暂不支持拉取模型列表");
             }
-        } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : String(error);
-            setFetchError(prev => ({ ...prev, [config.id]: msg }));
-            setFetchedVoices(prev => ({ ...prev, [config.id]: [] }));
+        } catch (error) {
+            setFetchError(prev => ({ ...prev, [config.id]: error instanceof Error ? error.message : "同步失败" }));
         } finally {
             setIsFetching(prev => ({ ...prev, [config.id]: false }));
         }
@@ -513,118 +539,101 @@ export function VoiceSettings() {
 
     const togglePreview = async (config: VoiceApiConfig) => {
         if (playingVoiceId === config.id) {
-            if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current = null;
-            }
+            audioRef.current?.pause();
+            if (audioRef.current) audioRef.current.currentTime = 0;
             setPlayingVoiceId(null);
             return;
         }
 
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current = null;
+        if (!config.apiKey.trim()) {
+            setFetchError(prev => ({ ...prev, [config.id]: `${config.provider} API Key 未配置` }));
+            return;
+        }
+        if (!config.defaultVoice.trim()) {
+            setFetchError(prev => ({ ...prev, [config.id]: config.provider === "ElevenLabs" ? "请先填写 ElevenLabs Voice ID" : "请先选择默认音色" }));
+            return;
         }
 
         setPlayingVoiceId(config.id);
-
+        setFetchError(prev => ({ ...prev, [config.id]: "" }));
         try {
             const previewText = config.provider === "Minimax" && config.languageBoost
                 ? MINIMAX_PREVIEW_TEXT[config.languageBoost] || "你好，很高兴认识你。这是一段语音试听。"
-                : "你好，我现在是" + (config.defaultVoice || "默认") + "音色。很高兴认识你。";
-            const blob = await synthesizeSpeech(
-                previewText,
-                config,
-            );
-            if (!blob) throw new Error("当前语音配置未返回真实音频");
+                : config.provider === "ElevenLabs"
+                    ? "你好，很高兴认识你。这是一段 ElevenLabs 语音试听。"
+                    : "你好，我现在是" + (config.defaultVoice || "默认") + "音色。很高兴认识你。";
+            const blob = await synthesizeSpeech(previewText, config);
+            if (!blob) throw new Error("语音生成失败");
             const url = URL.createObjectURL(blob);
-
+            if (audioRef.current) {
+                audioRef.current.pause();
+                URL.revokeObjectURL(audioRef.current.src);
+            }
             const audio = new Audio(url);
             audioRef.current = audio;
             audio.onended = () => {
                 setPlayingVoiceId(null);
-                audioRef.current = null;
                 URL.revokeObjectURL(url);
             };
             audio.onerror = () => {
                 setPlayingVoiceId(null);
-                audioRef.current = null;
+                setFetchError(prev => ({ ...prev, [config.id]: "试听音频播放失败" }));
                 URL.revokeObjectURL(url);
             };
             await audio.play();
-        } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            alert(`语音测试失败: ${msg}`);
+        } catch (error) {
             setPlayingVoiceId(null);
+            setFetchError(prev => ({ ...prev, [config.id]: error instanceof Error ? error.message : "试听失败" }));
         }
     };
+
+    useEffect(() => {
+        return () => {
+            audioRef.current?.pause();
+            if (audioRef.current?.src) URL.revokeObjectURL(audioRef.current.src);
+        };
+    }, []);
 
     if (!isLoaded) return null;
 
     return (
-        <div className="flex flex-col gap-6">
-            <div className="flex items-center">
-                <h2 className="m-0 mx-2 ts-28 font-bold italic leading-none text-black">Voice API</h2>
-            </div>
-
+        <div className="flex flex-col gap-5 px-4 pb-8">
             {configs.length === 0 ? (
-                <div className="ui-empty">
-                    <div className="ui-icon-circle">
-                        <Play size={24} />
-                    </div>
-                    <span className="menu-label font-semibold">没有语音配置</span>
-                    <span className="menu-desc max-w-[240px]">
-                        配置语音 API 以启用语音通话和回复播报。
-                    </span>
-                    <button onClick={addConfig} className="ui-btn ui-btn-primary rounded-[20px] mt-2">
-                        <Plus size={16} /> 添加配置
-                    </button>
+                <div className="rounded-2xl border border-dashed border-gray-300 px-5 py-10 text-center">
+                    <div className="text-sm font-semibold text-gray-800">暂无语音配置</div>
+                    <div className="mt-1 text-xs text-gray-500">点击右上角“新增语音方案”开始配置。</div>
                 </div>
             ) : (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-3">
                     {configs.map(config => (
-                        <div
-                            key={config.id}
-                            className="ui-config-card min-w-0 cursor-pointer"
-                            style={{ aspectRatio: "3 / 2", padding: "12px", justifyContent: "space-between" }}
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`编辑 ${config.name || config.provider}`}
-                            onClick={() => setEditingId(config.id)}
-                            onKeyDown={(event) => {
-                                if (event.target !== event.currentTarget) return;
-                                if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    setEditingId(config.id);
-                                }
-                            }}
-                        >
-                            <div className="min-w-0 flex flex-col gap-1">
-                                <span className="truncate text-[calc(14.4px*var(--app-text-scale,1))] font-bold leading-tight text-[var(--c-text-title)]">{config.name || config.provider}</span>
-                                <span className="menu-desc truncate">{config.defaultVoice || config.model || config.provider || "未设置音色"}</span>
-                            </div>
-                            <div className="flex gap-2 shrink-0 items-center justify-end">
-                                <button
-                                    type="button"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        setEditingId(config.id);
-                                    }}
-                                    className="ui-link-btn"
-                                >
-                                    <FileEdit size={18} />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        setConfirmDeleteId(config.id);
-                                    }}
-                                    className="ui-link-btn"
-                                    data-variant="danger"
-                                >
-                                    <Trash2 size={18} />
-                                </button>
+                        <div key={config.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <div className="truncate text-sm font-semibold text-gray-900">{config.name || "未命名语音"}</div>
+                                    <div className="mt-1 text-xs text-gray-500">
+                                        {config.provider === "ElevenLabs" ? "ElevenLabs" : config.provider === "OpenAI" ? "OpenAI TTS" : config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "Minimax 海外版" : "Minimax 国内版"}
+                                        {config.model ? ` · ${config.model}` : ""}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => { setIsNewConfig(false); setEditingId(config.id); }}
+                                        className="ui-link-btn"
+                                        aria-label="编辑"
+                                    >
+                                        <FileEdit size={18} />
+                                    </button>
+                                    <button
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            setConfirmDeleteId(config.id);
+                                        }}
+                                        className="ui-link-btn"
+                                        data-variant="danger"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     ))}
@@ -740,6 +749,82 @@ export function VoiceSettings() {
                                             </>
                                         )}
 
+                                        {config.provider === "ElevenLabs" && (
+                                            <>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="menu-desc ml-1">语音模型 (TTS Model)</label>
+                                                    <select
+                                                        value={ELEVENLABS_MODELS.some(model => model.id === config.model) ? config.model : DEFAULT_ELEVENLABS_MODEL}
+                                                        onChange={(e) => updateConfig(config.id, { model: e.target.value })}
+                                                        className="ui-select"
+                                                    >
+                                                        {ELEVENLABS_MODELS.map(model => (
+                                                            <option key={model.id} value={model.id}>{model.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="menu-desc ml-1">朗读语言 (Language)</label>
+                                                    <select
+                                                        value={config.languageBoost || ""}
+                                                        onChange={(e) => updateConfig(config.id, { languageBoost: e.target.value || undefined })}
+                                                        className="ui-select"
+                                                    >
+                                                        {ELEVENLABS_LANGUAGE_OPTIONS.map(option => (
+                                                            <option key={option.value || "auto"} value={option.value}>{option.label}</option>
+                                                        ))}
+                                                    </select>
+                                                    <span className="menu-desc ml-1">语言代码只指定语言，不会把当前音色的口音自动改成另一种口音；口音主要由 Voice ID 决定。</span>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center justify-between px-1">
+                                                        <label className="menu-desc">语速 (Speed)</label>
+                                                        <span className="menu-label font-medium">{(config.speechSpeed ?? 1.0).toFixed(1)}×</span>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min={ELEVENLABS_SPEED_MIN}
+                                                        max={ELEVENLABS_SPEED_MAX}
+                                                        step={ELEVENLABS_SPEED_STEP}
+                                                        value={config.speechSpeed ?? 1.0}
+                                                        onChange={(e) => updateConfig(config.id, { speechSpeed: Number(e.target.value) })}
+                                                        className="w-full accent-black"
+                                                        aria-label="ElevenLabs 语速"
+                                                    />
+                                                    <div className="relative h-4 px-1 text-xs text-gray-500" aria-hidden="true">
+                                                        <span className="absolute left-1 whitespace-nowrap">0.7×</span>
+                                                        <span className="absolute whitespace-nowrap" style={{ left: "50%", transform: "translateX(-50%)" }}>1.0× 默认</span>
+                                                        <span className="absolute right-1 whitespace-nowrap">1.2×</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center justify-between px-1">
+                                                        <label className="menu-desc">稳定度 (Stability)</label>
+                                                        <span className="menu-label font-medium">{(config.elevenLabsStability ?? DEFAULT_ELEVENLABS_STABILITY).toFixed(2)}</span>
+                                                    </div>
+                                                    <input type="range" min={0} max={1} step={0.01} value={config.elevenLabsStability ?? DEFAULT_ELEVENLABS_STABILITY} onChange={(e) => updateConfig(config.id, { elevenLabsStability: Number(e.target.value) })} className="w-full accent-black" aria-label="ElevenLabs 稳定度" />
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center justify-between px-1">
+                                                        <label className="menu-desc">相似度 (Similarity)</label>
+                                                        <span className="menu-label font-medium">{(config.elevenLabsSimilarity ?? DEFAULT_ELEVENLABS_SIMILARITY).toFixed(2)}</span>
+                                                    </div>
+                                                    <input type="range" min={0} max={1} step={0.01} value={config.elevenLabsSimilarity ?? DEFAULT_ELEVENLABS_SIMILARITY} onChange={(e) => updateConfig(config.id, { elevenLabsSimilarity: Number(e.target.value) })} className="w-full accent-black" aria-label="ElevenLabs 相似度" />
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center justify-between px-1">
+                                                        <label className="menu-desc">风格强度 (Style)</label>
+                                                        <span className="menu-label font-medium">{(config.elevenLabsStyle ?? DEFAULT_ELEVENLABS_STYLE).toFixed(2)}</span>
+                                                    </div>
+                                                    <input type="range" min={0} max={1} step={0.01} value={config.elevenLabsStyle ?? DEFAULT_ELEVENLABS_STYLE} onChange={(e) => updateConfig(config.id, { elevenLabsStyle: Number(e.target.value) })} className="w-full accent-black" aria-label="ElevenLabs 风格强度" />
+                                                </div>
+                                                <div className="ui-toggle-row">
+                                                    <span className="menu-label font-medium">Speaker Boost</span>
+                                                    <Toggle checked={config.elevenLabsSpeakerBoost ?? DEFAULT_ELEVENLABS_SPEAKER_BOOST} onChange={(v) => updateConfig(config.id, { elevenLabsSpeakerBoost: v })} />
+                                                </div>
+                                            </>
+                                        )}
+
                                         {config.provider === "Minimax" && (
                                             <>
                                                 <div className="flex flex-col gap-1">
@@ -842,7 +927,7 @@ export function VoiceSettings() {
                                         )}
 
                                         <div className="flex flex-col gap-1">
-                                            <label className="menu-desc ml-1">默认音色 (Default Voice) 或 自定义 Voice ID</label>
+                                            <label className="menu-desc ml-1">{config.provider === "ElevenLabs" ? "Voice ID" : "默认音色 (Default Voice) 或 自定义 Voice ID"}</label>
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex gap-2">
                                                     {manualVoiceIds[config.id] ? (
@@ -851,7 +936,7 @@ export function VoiceSettings() {
                                                                 type="text"
                                                                 value={config.defaultVoice}
                                                                 onChange={(e) => updateConfig(config.id, { defaultVoice: e.target.value })}
-                                                                placeholder={config.provider === "OpenAI" ? "alloy" : "male-qn-qingse 或克隆 Voice ID"}
+                                                                placeholder={config.provider === "OpenAI" ? "alloy" : config.provider === "ElevenLabs" ? "例如 21m00Tcm4TlvDq8ikWAM" : "male-qn-qingse 或克隆 Voice ID"}
                                                                 className="flex-1"
                                                             />
                                                             <button
@@ -897,14 +982,16 @@ export function VoiceSettings() {
                                                 </div>
 
                                                 <div className="flex gap-2 mt-0.5">
-                                                    <button
-                                                        onClick={() => fetchVoices(config)}
-                                                        disabled={isFetching[config.id]}
-                                                        className="ui-btn ui-btn ui-btn-soft-action w-full"
-                                                    >
-                                                        <RefreshCw size={16} className={isFetching[config.id] ? "animate-spin" : ""} />
-                                                        {isFetching[config.id] ? "同步中..." : config.provider === "Minimax" ? "同步音色列表" : "显示默认音色"}
-                                                    </button>
+                                                    {config.provider !== "ElevenLabs" && (
+                                                        <button
+                                                            onClick={() => fetchVoices(config)}
+                                                            disabled={isFetching[config.id]}
+                                                            className="ui-btn ui-btn ui-btn-soft-action w-full"
+                                                        >
+                                                            <RefreshCw size={16} className={isFetching[config.id] ? "animate-spin" : ""} />
+                                                            {isFetching[config.id] ? "同步中..." : config.provider === "Minimax" ? "同步音色列表" : "显示默认音色"}
+                                                        </button>
+                                                    )}
                                                     {config.provider === "Minimax" && (
                                                         <button
                                                             onClick={() => openCloneModal(config)}
