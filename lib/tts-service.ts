@@ -183,6 +183,7 @@ async function synthesizeOpenAI(text: string, config: VoiceApiConfig): Promise<B
 
 const ELEVENLABS_SPEED_MIN = 0.7;
 const ELEVENLABS_SPEED_MAX = 1.2;
+const ELEVENLABS_HIGH_QUALITY_OUTPUT_FORMAT = "mp3_44100_192";
 
 function normalizeElevenLabsSpeed(speed: number | undefined): number {
     if (typeof speed !== "number" || !Number.isFinite(speed)) return 1.0;
@@ -229,7 +230,8 @@ async function synthesizeElevenLabs(text: string, config: VoiceApiConfig): Promi
         body.language_code = config.languageBoost.trim().toLowerCase();
     }
 
-    const response = await fetchWithTimeout(`${baseUrl}/text-to-speech/${encodeURIComponent(config.defaultVoice.trim())}`, {
+    const endpoint = `${baseUrl}/text-to-speech/${encodeURIComponent(config.defaultVoice.trim())}`;
+    const requestInit: RequestInit = {
         method: "POST",
         headers: {
             "xi-api-key": config.apiKey.trim(),
@@ -237,7 +239,12 @@ async function synthesizeElevenLabs(text: string, config: VoiceApiConfig): Promi
             Accept: "audio/mpeg",
         },
         body: JSON.stringify(body),
-    });
+    };
+
+    let response = await fetchWithTimeout(`${endpoint}?output_format=${ELEVENLABS_HIGH_QUALITY_OUTPUT_FORMAT}`, requestInit);
+    if (!response.ok && [400, 401, 403, 404, 422].includes(response.status)) {
+        response = await fetchWithTimeout(endpoint, requestInit);
+    }
 
     if (!response.ok) {
         const errText = await response.text().catch(() => "");
