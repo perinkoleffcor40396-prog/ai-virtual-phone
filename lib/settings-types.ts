@@ -138,10 +138,18 @@ export type VoiceApiConfig = {
     sttModel?: string;
     defaultVoice: string;
     languageBoost?: string;
-    /** Minimax voice_setting.speed. Missing values keep the legacy 1.0x behavior. */
+    /** Provider-dependent speech speed. Minimax: 0.5-2.0x; ElevenLabs: 0.7-1.2x. */
     speechSpeed?: number;
     /** Minimax voice_setting.pitch（半音，±12）。缺省保持旧行为（0，原声）。 */
     speechPitch?: number;
+    /** ElevenLabs voice_settings.stability (0..1). */
+    elevenLabsStability?: number;
+    /** ElevenLabs voice_settings.similarity_boost (0..1). */
+    elevenLabsSimilarity?: number;
+    /** ElevenLabs voice_settings.style (0..1). */
+    elevenLabsStyle?: number;
+    /** ElevenLabs voice_settings.use_speaker_boost. */
+    elevenLabsSpeakerBoost?: boolean;
     customVoices?: { id: string; name: string; createdAt?: number }[];
     enableSTT: boolean;
     enableTTS: boolean;
@@ -269,12 +277,12 @@ export type RestToolConfig = {
     endpoint: string;
     method: "GET" | "POST";
     headers?: Record<string, string>;
-    bodyTemplate?: string;        // Optional JSON body template with {{param}} placeholders
-    parameterSchema: string;       // JSON Schema for LLM-visible params only
-    fixedParams?: Record<string, string>;  // auto-injected params (api_key etc), hidden from LLM
+    bodyTemplate?: string;
+    parameterSchema: string;
+    fixedParams?: Record<string, string>;
     enabled: boolean;
     builtIn?: boolean;
-    directFetch?: boolean;         // true = browser direct fetch, false = server proxy
+    directFetch?: boolean;
     createdBy?: "user" | "ai";
     createdAt: number;
     updatedAt: number;
@@ -287,8 +295,8 @@ export type CompositeToolStep = {
     toolId?: string;
     serverId?: string;
     toolName?: string;
-    argsTemplate?: string;        // JSON object template. Supports {{input.xxx}}, {{steps.key.data}}, {{last.data}}
-    script?: string;              // Arbitrary async JS for script steps. Receives input, steps, last, args, context.
+    argsTemplate?: string;
+    script?: string;
     saveAs?: string;
 };
 
@@ -334,9 +342,7 @@ export type McpServerConfig = {
     directFetch?: boolean;
     headers?: Record<string, string>;
     discoveredTools?: McpDiscoveredTool[];
-    // Session state (runtime, not persisted across page refresh)
     sessionId?: string;
-    // OAuth tokens (persisted)
     accessToken?: string;
     refreshToken?: string;
     tokenExpiresAt?: number;
