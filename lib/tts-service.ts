@@ -315,9 +315,13 @@ function getAudioContext(): AudioContext | null {
     const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!Ctor) return null;
     if (!_audioCtx) {
-        // 不要钉 sampleRate:部分 iOS 版本上非硬件采样率的 ctx 会"时钟照走、
-        // 输出全静音"(比闷更糟)。防发闷靠 TTS 请求参数(44100/256k)兜底。
-        try { _audioCtx = new Ctor(); } catch { return null; }
+        // 显式指定高采样率，防止被后台保活用的 8kHz 占位音频带偏。
+        // （部分 iOS 强制重采样可能静音，但现代安卓/桌面端支持 44100 且能避免发闷）
+        try {
+            _audioCtx = new Ctor({ sampleRate: 44100 });
+        } catch {
+            try { _audioCtx = new Ctor(); } catch { return null; }
+        }
     }
     return _audioCtx;
 }
