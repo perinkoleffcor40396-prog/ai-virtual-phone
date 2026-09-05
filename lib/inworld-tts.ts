@@ -8,9 +8,6 @@ const STEERABLE_INWORLD_MODEL = "inworld-tts-2";
 
 type VocalState = "neutral" | "amused" | "sarcastic" | "embarrassed" | "annoyed" | "angry" | "sad" | "excited" | "affectionate" | "surprised";
 
-// MJ should feel like Michelle Jones speaking to a real person, not like a
-// voice actor reading an emotion preset. Keep the direction specific enough
-// to shape prosody, but restrained enough that the cloned voice remains intact.
 const MJ_VOCAL_STEERING: Record<VocalState, string> = {
     neutral: "speak as Michelle Jones in a natural private conversation: calm, understated, dryly observant, slightly guarded, relaxed pacing, restrained emotion, never announcer-like",
     amused: "speak as Michelle Jones with a small genuine smile: quietly amused, dry and lightly playful, subtle lift in intonation, restrained rather than bubbly or theatrical",
@@ -24,57 +21,48 @@ const MJ_VOCAL_STEERING: Record<VocalState, string> = {
     surprised: "speak as Michelle Jones caught genuinely off guard: brief natural surprise at the start, slightly brighter and quicker onset, then settle back into her dry conversational style, never exaggerated",
 };
 
+// The existing chat storage already emits this event whenever a message is
+// persisted. Listening here lets the voice layer see the user's immediately
+// preceding message without adding another LLM call or touching the large
+// voice-call UI component.
+let latestUserContext = "";
+let latestUserContextAt = 0;
+if (typeof window !== "undefined") {
+    window.addEventListener("chat-message-pushed", (event) => {
+        const message = (event as CustomEvent<{ message?: { role?: string; content?: string } }>).detail?.message;
+        if (message?.role === "user" && typeof message.content === "string" && message.content.trim()) {
+            latestUserContext = message.content.trim();
+            latestUserContextAt = Date.now();
+        }
+    });
+}
+
 function decodeBase64Audio(audioContent: string): Uint8Array {
     const binary = atob(audioContent);
     const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-        bytes[i] = binary.charCodeAt(i);
-    }
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
     return bytes;
 }
 
 function normalizeVocalState(value?: string): VocalState {
     const state = value?.trim().toLowerCase();
     const aliases: Record<string, VocalState> = {
-        neutral: "neutral",
-        calm: "neutral",
-        happy: "amused",
-        amused: "amused",
-        playful: "amused",
-        sarcastic: "sarcastic",
-        sarcasm: "sarcastic",
-        embarrassed: "embarrassed",
-        embarrassment: "embarrassed",
-        shy: "embarrassed",
-        annoyed: "annoyed",
-        frustrated: "annoyed",
-        angry: "angry",
-        rage: "angry",
-        sad: "sad",
-        sorrowful: "sad",
-        excited: "excited",
-        enthusiastic: "excited",
-        affectionate: "affectionate",
-        loving: "affectionate",
-        surprised: "surprised",
-        surprise: "surprised",
+        neutral: "neutral", calm: "neutral", happy: "amused", amused: "amused", playful: "amused",
+        sarcastic: "sarcastic", sarcasm: "sarcastic", embarrassed: "embarrassed", embarrassment: "embarrassed", shy: "embarrassed",
+        annoyed: "annoyed", frustrated: "annoyed", angry: "angry", rage: "angry", sad: "sad", sorrowful: "sad",
+        excited: "excited", enthusiastic: "excited", affectionate: "affectionate", loving: "affectionate",
+        surprised: "surprised", surprise: "surprised",
     };
     return aliases[state || ""] || "neutral";
 }
 
-/**
- * Detect a lightweight vocal state without another LLM call.
- * The detector is deliberately conservative: neutral remains the default,
- * and explicit conversational cues win over punctuation alone.
- *
- * This is exported so higher-level conversation layers can reuse the exact
- * same MJ state vocabulary later instead of creating a second emotion system.
- */
-export function inferMjVocalState(text: string): VocalState {
+/** Infer MJ's vocal state from the current reply plus the user's recent context. */
+export function inferMjVocalState(text: string, userContext = ""): VocalState {
     const t = text.toLowerCase().trim();
+    const u = userContext.toLowerCase().trim();
 
-    // Strong conversational cues first. Keep affection ahead of sadness so
-    // "I miss you" does not get misclassified as a sad delivery.
+    // The assistant's actual wording has priority: it is the clearest signal
+    // of how MJ intends to deliver this particular line.
     if (/\b(i love you|love ya|dear|sweetheart|miss you so much|love you so much)\b|愛你|親愛的|好想你/.test(t)) return "affectionate";
     if (/\b(sorry to hear|i'm sorry|i am sorry|sad|heartbroken|i feel awful|i feel terrible)\b|難過|傷心|心疼|好難過|很難受|好痛苦/.test(t)) return "sad";
     if (/\b(furious|pissed|enraged|hate this|i hate|i'm angry|i am angry)\b|氣死|憤怒|暴怒|討厭死|我生氣/.test(t)) return "angry";
@@ -85,10 +73,25 @@ export function inferMjVocalState(text: string): VocalState {
     if (/\b(excited|can't wait|amazing|awesome|so happy|we did it|good news)\b|期待|太棒|超開心|好興奮|成功了|好消息/.test(t)) return "excited";
     if (/\b(omg|wow|no way|what\?|you're kidding|are you serious|wait, what)\b|天啊|什麼|真的假的|不會吧|你認真的嗎|等一下/.test(t)) return "surprised";
 
-    // Conversational structure can also imply a subtle state.
+    // Then infer how MJ is responding to the user's emotional state. This is
+    // deliberately conservative: empathy becomes soft/affectionate, while a
+    // hostile user context does not automatically make MJ angry.
+    if (/\b(i feel awful|i feel terrible|i'm sad|i am sad|i'm hurt|i am hurt|i'm exhausted|i am exhausted|rough day|bad day|i'm having a hard time)\b|難受|難過|傷心|好累|累死|糟透了|很痛苦|今天真的不好/.test(u)) {
+        if (/\b(come here|i'm here|i am here|it's okay|it is okay|you'll be okay|you are okay|you'll be fine|i've got you|i got you|take your time)\b|過來|我在這|沒事|沒關係|會好的|有我在|慢慢來/.test(t)) return "affectionate";
+        return "sad";
+    }
+    if (/\b(i'm embarrassed|i am embarrassed|that's embarrassing|i'm shy|i am shy)\b|尷尬|害羞|不好意思/.test(u)) {
+        if (/\b(teasing|kidding|haha|cute|adorable)\b|可愛|逗你|開玩笑/.test(t)) return "amused";
+        return "embarrassed";
+    }
+    if (/\b(i'm angry|i am angry|i'm pissed|i am pissed|this pisses me off|i hate this)\b|我生氣|氣死|憤怒|討厭死/.test(u)) {
+        if (/\b(hey|whoa|calm down|okay, okay)\b|冷靜|好好好/.test(t)) return "surprised";
+        return "annoyed";
+    }
+    if (/\b(i have good news|guess what|i'm excited|i am excited|this is amazing|we did it)\b|好消息|猜猜|好興奮|太棒了|成功了/.test(u)) return "excited";
+    if (/\b(i love you|love you|i miss you|miss you)\b|愛你|想你|喜歡你/.test(u)) return "affectionate";
+    if (/\b(joke|kidding|lol|haha|funny)\b|笑話|哈哈|開玩笑/.test(u)) return "amused";
     if (/\?{2,}|？{2,}|!{2,}|！{2,}/.test(t)) return "surprised";
-    if (/\b(come here|i'm here|i am here|it's okay|it is okay|you'll be okay|you are okay|you'll be fine|i've got you|i got you)\b|過來|我在這|沒事|沒關係|會好的|有我在/.test(t)) return "affectionate";
-
     return "neutral";
 }
 
@@ -97,14 +100,6 @@ function isMjVoiceConfig(config: VoiceApiConfig): boolean {
     return /michelle|mj\b/.test(identity);
 }
 
-/**
- * Synthesize speech with an Inworld cloned/built-in voice.
- *
- * MJ uses Inworld TTS-2 rather than TTS-2 Flash because natural-language
- * steering is supported by TTS-2. Steering instructions are English and are
- * placed at the start of the text; Inworld interprets them as delivery
- * instructions rather than spoken words.
- */
 export async function synthesizeInworld(
     text: string,
     config: VoiceApiConfig,
@@ -119,8 +114,9 @@ export async function synthesizeInworld(
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const isMj = isMjVoiceConfig(config);
     const modelId = isMj ? STEERABLE_INWORLD_MODEL : (config.model || DEFAULT_INWORLD_MODEL);
+    const recentUserContext = Date.now() - latestUserContextAt <= 120_000 ? latestUserContext : "";
     const vocalState = isMj
-        ? (options?.emotion ? normalizeVocalState(options.emotion) : inferMjVocalState(text))
+        ? (options?.emotion ? normalizeVocalState(options.emotion) : inferMjVocalState(text, recentUserContext))
         : "neutral";
     const steering = isMj ? `[${MJ_VOCAL_STEERING[vocalState]}] ` : "";
     const ttsText = `${steering}${text}`;
@@ -129,10 +125,7 @@ export async function synthesizeInworld(
         const response = await fetch(`${baseUrl}/tts/v1/voice`, {
             method: "POST",
             signal: controller.signal,
-            headers: {
-                Authorization: `Basic ${config.apiKey.trim()}`,
-                "Content-Type": "application/json",
-            },
+            headers: { Authorization: `Basic ${config.apiKey.trim()}`, "Content-Type": "application/json" },
             body: JSON.stringify({
                 text: ttsText,
                 voiceId: config.defaultVoice.trim(),
@@ -149,7 +142,6 @@ export async function synthesizeInworld(
 
         const data = await response.json() as { audioContent?: string };
         if (!data.audioContent) throw new Error("Inworld 未返回 audioContent 音频数据");
-
         return new Blob([decodeBase64Audio(data.audioContent)], { type: "audio/mpeg" });
     } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
