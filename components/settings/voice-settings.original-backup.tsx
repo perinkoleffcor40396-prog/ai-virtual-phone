@@ -1,0 +1,1 @@
+This file is intentionally left as a backup marker. The canonical original voice-settings.tsx blob is preserved in Git history under blob SHA 99607260937ceada6c29528f2690b63cab4bbc79.
