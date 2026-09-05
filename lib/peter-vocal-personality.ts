@@ -125,7 +125,7 @@ function tagsForState(state: PeterVocalState, text: string, userContext: string)
         case "angry":
             return hasExclamation ? ["angry"] : ["angry", "firmly"];
         case "annoyed":
-            return hasQuestion ? ["sarcastic"] : ["sarcastic"];
+            return ["sarcastic"];
         case "surprised":
             return ["surprised"];
         case "excited":
@@ -153,16 +153,19 @@ function tagsForState(state: PeterVocalState, text: string, userContext: string)
 }
 
 /**
- * Apply a tiny rhythm cue when Peter's wording already implies a change of pace.
+ * Apply rhythm cues when Peter's wording already implies a change of pace.
  * We never rewrite his actual dialogue: punctuation and wording remain intact.
  */
 function rhythmTags(state: PeterVocalState, text: string): string[] {
     const trimmed = text.trim();
     const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
     const tags: string[] = [];
+    const hasEllipsis = /\.\.\.|……/.test(trimmed);
+    const hasSelfCorrection = /\b(no,?\s+i mean|i mean,? no|wait,? no|okay,? that's not|that's not what i|i didn't—?i mean|i mean—)/i.test(trimmed);
+    const hasDefensiveTurn = /\b(i'm not|i am not|i didn't|i did not|it's not|it is not|whatever|fine)\b.*\b(okay|okay,? fine|you're right|i guess|maybe|sorry|i know)\b/i.test(trimmed);
 
     if (state === "nervous" || state === "embarrassed") {
-        if (/\.\.\.|……/.test(trimmed)) tags.push("hesitates");
+        if (hasEllipsis) tags.push("hesitates");
         else if (wordCount <= 12) tags.push("hesitantly");
     } else if (state === "excited") {
         if (wordCount >= 12 || /!{2,}|！{2,}/.test(trimmed)) tags.push("quickly");
@@ -175,6 +178,14 @@ function rhythmTags(state: PeterVocalState, text: string): string[] {
     } else if (state === "self_deprecating") {
         if (wordCount >= 8) tags.push("with a small pause");
     }
+
+    // Peter often catches himself halfway through a thought instead of speaking
+    // like a perfectly composed narrator.
+    if (hasSelfCorrection) tags.push("with a self-correction");
+
+    // When he starts defensive and then gives in, the important part is the
+    // emotional turn: firm at first, then softer. The v3 tag is deliberately subtle.
+    if (hasDefensiveTurn && state !== "angry") tags.push("softening at the end");
 
     return tags;
 }
