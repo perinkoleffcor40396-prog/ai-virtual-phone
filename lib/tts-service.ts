@@ -3,6 +3,7 @@
 import type { VoiceApiConfig, ContentAppId } from "./settings-types";
 import { loadVoiceConfigs, loadBindingConfig, resolveBinding } from "./settings-storage";
 import { synthesizeInworld } from "@/lib/inworld-tts";
+import { preparePeterVocalDelivery } from "@/lib/peter-vocal-personality";
 
 export type VoiceApiConfigResolved = VoiceApiConfig;
 
@@ -135,11 +136,22 @@ async function synthesizeElevenLabs(text: string, config: VoiceApiConfig): Promi
     if (!config.apiKey) throw new Error("ElevenLabs API Key 未配置");
     if (!config.defaultVoice?.trim()) throw new Error("ElevenLabs Voice ID 未配置");
     const baseUrl = (config.baseUrl || "https://api.elevenlabs.io/v1").replace(/\/$/, "");
+
+    // Peter gets a local, deterministic performance pass only when his config
+    // explicitly identifies him AND Eleven v3 is selected. All other ElevenLabs
+    // voices/models receive the exact original text and settings.
+    const delivery = preparePeterVocalDelivery(
+        text,
+        `${config.name || ""} ${config.defaultVoice || ""}`,
+        config.model,
+    );
+    const ttsText = delivery?.text || text;
+
     const voiceSettings: Record<string, unknown> = {
         stability: normalizeElevenLabsStability(config.elevenLabsStability), similarity_boost: normalizeElevenLabsSimilarity(config.elevenLabsSimilarity),
         style: normalizeElevenLabsStyle(config.elevenLabsStyle), use_speaker_boost: config.elevenLabsSpeakerBoost ?? true, speed: normalizeElevenLabsSpeed(config.speechSpeed),
     };
-    const body: Record<string, unknown> = { text, model_id: config.model || "eleven_flash_v2_5", voice_settings: voiceSettings };
+    const body: Record<string, unknown> = { text: ttsText, model_id: config.model || "eleven_flash_v2_5", voice_settings: voiceSettings };
     if (config.languageBoost?.trim() && config.languageBoost.trim().toLowerCase() !== "auto") body.language_code = config.languageBoost.trim().toLowerCase();
     const endpoint = `${baseUrl}/text-to-speech/${encodeURIComponent(config.defaultVoice.trim())}`;
     const requestInit: RequestInit = { method: "POST", headers: { "xi-api-key": config.apiKey.trim(), "Content-Type": "application/json", Accept: "audio/mpeg" }, body: JSON.stringify(body) };
