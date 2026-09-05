@@ -2,7 +2,7 @@
 
 import type { VoiceApiConfig } from "./settings-types";
 
-const DEFAULT_INWORLD_BASE_URL = "https://api.inworld.ai";
+export const DEFAULT_INWORLD_BASE_URL = "https://api.inworld.ai";
 const DEFAULT_INWORLD_MODEL = "inworld-tts-2-flash";
 
 function decodeBase64Audio(audioContent: string): Uint8Array {
