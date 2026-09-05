@@ -14,21 +14,14 @@ function decodeBase64Audio(audioContent: string): Uint8Array {
     return bytes;
 }
 
-/**
- * Synthesize speech with an Inworld cloned/built-in voice.
- * The returned Blob matches the existing TTS playback contract.
- */
+/** Synthesize speech with an Inworld cloned/built-in voice. */
 export async function synthesizeInworld(
     text: string,
     config: VoiceApiConfig,
     timeoutMs = 120_000,
 ): Promise<Blob> {
-    if (!config.apiKey?.trim()) {
-        throw new Error("Inworld API Key 未配置");
-    }
-    if (!config.defaultVoice?.trim()) {
-        throw new Error("Inworld Voice ID 未配置");
-    }
+    if (!config.apiKey?.trim()) throw new Error("Inworld API Key 未配置");
+    if (!config.defaultVoice?.trim()) throw new Error("Inworld Voice ID 未配置");
 
     const baseUrl = (config.baseUrl || DEFAULT_INWORLD_BASE_URL).replace(/\/$/, "");
     const controller = new AbortController();
@@ -46,24 +39,17 @@ export async function synthesizeInworld(
                 text,
                 voiceId: config.defaultVoice.trim(),
                 modelId: config.model || DEFAULT_INWORLD_MODEL,
-                audioConfig: {
-                    audioEncoding: "MP3",
-                    sampleRateHertz: 24000,
-                },
+                audioConfig: { audioEncoding: "MP3", sampleRateHertz: 24000 },
             }),
         });
 
         if (!response.ok) {
             const errorText = await response.text().catch(() => "");
-            throw new Error(
-                `Inworld TTS 请求失败 (${response.status}): ${errorText.slice(0, 500)}`,
-            );
+            throw new Error(`Inworld TTS 请求失败 (${response.status}): ${errorText.slice(0, 500)}`);
         }
 
         const data = await response.json() as { audioContent?: string };
-        if (!data.audioContent) {
-            throw new Error("Inworld 未返回 audioContent 音频数据");
-        }
+        if (!data.audioContent) throw new Error("Inworld 未返回 audioContent 音频数据");
 
         return new Blob([decodeBase64Audio(data.audioContent)], { type: "audio/mpeg" });
     } catch (error) {
@@ -82,4 +68,4 @@ export const INWORLD_TTS_MODELS = [
 ] as const;
 
 export const DEFAULT_INWORLD_TTS_MODEL = DEFAULT_INWORLD_MODEL;
-export const DEFAULT_INWORLD_BASE_URL = DEFAULT_INWORLD_BASE_URL;
+export const INWORLD_TTS_BASE_URL = DEFAULT_INWORLD_BASE_URL;
