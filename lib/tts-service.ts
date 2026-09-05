@@ -2,6 +2,7 @@
 
 import type { VoiceApiConfig, ContentAppId } from "./settings-types";
 import { loadVoiceConfigs, loadBindingConfig, resolveBinding } from "./settings-storage";
+import { synthesizeInworld } from "@/lib/inworld-tts";
 
 export type VoiceApiConfigResolved = VoiceApiConfig;
 
@@ -27,6 +28,7 @@ export function resolveVoiceConfig(characterId: string, appId?: ContentAppId): V
  * - OpenAI: REST API → binary audio blob
  * - ElevenLabs: REST API → binary audio blob
  * - F5-TTS: local bridge → binary wav blob
+ * - Inworld: REST API → base64-encoded mp3
  */
 export async function synthesizeSpeech(
     text: string,
@@ -51,6 +53,10 @@ export async function synthesizeSpeech(
 
     if (provider === "F5-TTS") {
         return synthesizeF5TTS(text, voiceConfig);
+    }
+
+    if (provider === "Inworld") {
+        return synthesizeInworld(text, voiceConfig);
     }
 
     return null;
@@ -126,8 +132,6 @@ async function synthesizeMinimax(text: string, config: VoiceApiConfig, emotion?:
             stream: false,
             ...(config.languageBoost ? { language_boost: config.languageBoost } : {}),
             voice_setting: voiceSetting,
-            // 44100/256k 是 Minimax 支持的最高档;之前 32000/128k 会把 hd 模型
-            // 的输出压闷(用户反馈"声音糊"),各模型均支持该档位。
             audio_setting: {
                 sample_rate: 44100,
                 bitrate: 256000,
@@ -229,8 +233,6 @@ async function synthesizeElevenLabs(text: string, config: VoiceApiConfig): Promi
         voice_settings: voiceSettings,
     };
 
-    // ElevenLabs language_code is optional. Omitting it lets the selected model
-    // infer the language from the text; when supplied it must be an ISO 639-1 code.
     if (config.languageBoost?.trim() && config.languageBoost.trim().toLowerCase() !== "auto") {
         body.language_code = config.languageBoost.trim().toLowerCase();
     }
@@ -259,7 +261,6 @@ async function synthesizeElevenLabs(text: string, config: VoiceApiConfig): Promi
     const blob = await response.blob();
     return new Blob([await blob.arrayBuffer()], { type: "audio/mpeg" });
 }
-
 
 // ── F5-TTS local bridge ──────────────────────────────
 // F5-TTS runs as a local Python process on the user's machine. The bridge
@@ -306,9 +307,6 @@ let _sharedAudio: HTMLAudioElement | null = null;
 let _audioUnlocked = false;
 let _unlockListenerInstalled = false;
 
-// ── In-app TTS volume (0..1) ──
-// iOS plays Web Audio on the ringer/voice stream, so the hardware volume keys
-// don't control character speech. This in-app gain does. Synced to localStorage.
 const TTS_VOLUME_KEY = "ai_phone_tts_volume_v1";
 let _ttsVolume = ((): number => {
     if (typeof window === "undefined") return 1;
@@ -318,8 +316,6 @@ let _ttsVolume = ((): number => {
         return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
     } catch { return 1; }
 })();
-// Live gain node of the currently-playing AudioContext clip, so the slider can
-// adjust volume mid-sentence.
 let _activeGain: GainNode | null = null;
 
 export function getTtsVolume(): number {
@@ -333,13 +329,8 @@ export function setTtsVolume(volume: number): void {
     if (_sharedAudio) { try { _sharedAudio.volume = _ttsVolume; } catch { /* ignore */ } }
 }
 
-// ── 通话音频会话开关 ──
-// 只有通话界面在场时才让 Web Audio 上下文保持 running。此前全局点击解锁会把
-// 上下文永久 resume，页面从第一次点击起就一直持有系统音频会话；叠加通话退出
-// 后识别泄漏，整页音频会被钉在"通话模式"（语音条/试听音量巨大且音量键失灵）。
 let _callAudioSessionActive = false;
 
-/** 通话界面挂载时置 true、卸载/挂断时置 false（false 时立即挂起空闲的上下文）。 */
 export function setCallAudioSessionActive(active: boolean): void {
     _callAudioSessionActive = active;
     if (!active && _audioCtx && !_activeGain) {
@@ -352,8 +343,6 @@ function getAudioContext(): AudioContext | null {
     const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!Ctor) return null;
     if (!_audioCtx) {
-        // 显式指定高采样率，防止被后台保活用的 8kHz 占位音频带偏。
-        // （部分 iOS 强制重采样可能静音，但现代安卓/桌面端支持 44100 且能避免发闷）
         try {
             _audioCtx = new Ctor({ sampleRate: 44100 });
         } catch {
@@ -372,8 +361,6 @@ function getSharedAudio(): HTMLAudioElement {
 }
 
 function silentWavUrl(): string {
-    // A few ms of 8-bit mono PCM silence — a valid source so play() actually
-    // starts (and thus unlocks the element) on iOS.
     const numSamples = 16;
     const buffer = new ArrayBuffer(44 + numSamples);
     const view = new DataView(buffer);
@@ -383,21 +370,12 @@ function silentWavUrl(): string {
     view.setUint16(22, 1, true); view.setUint32(24, 8000, true); view.setUint32(28, 8000, true);
     view.setUint16(32, 1, true); view.setUint16(34, 8, true);
     writeStr(36, "data"); view.setUint32(40, numSamples, true);
-    for (let i = 0; i < numSamples; i++) view.setUint8(44 + i, 128); // 8-bit silence = 128
+    for (let i = 0; i < numSamples; i++) view.setUint8(44 + i, 128);
     return URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
 }
 
-/**
- * Unlock audio playback. Must run inside (or synchronously from) a user gesture.
- * Resumes the AudioContext (primary path) and unlocks the <audio> fallback.
- * Safe to call repeatedly.
- */
 export function unlockAudioPlayback(): void {
     if (typeof window === "undefined") return;
-
-    // Primary path: resume the Web Audio context within the gesture. Once
-    // resumed under a gesture, subsequent programmatic resume()s are allowed.
-    // 非通话期只借这次手势拿"授权"，随即挂起——不让页面平时一直持有音频会话。
     const ctx = getAudioContext();
     if (ctx && ctx.state === "suspended") {
         const keepRunning = _callAudioSessionActive;
@@ -408,7 +386,6 @@ export function unlockAudioPlayback(): void {
         }).catch(() => {});
     }
 
-    // Fallback path: unlock the shared <audio> element once.
     if (_audioUnlocked) return;
     const audio = getSharedAudio();
     const url = silentWavUrl();
@@ -442,13 +419,9 @@ function installUnlockListener(): void {
     window.addEventListener("mousedown", handler, { passive: true });
 }
 
-// Install the first-gesture unlock as soon as this module loads on the client.
-// The call screens import this module statically (via chat-room), so the
-// listener is in place well before the user taps the call button.
 if (typeof window !== "undefined") installUnlockListener();
 
 function decodeAudio(ctx: AudioContext, data: ArrayBuffer): Promise<AudioBuffer> {
-    // Support both the promise and legacy callback forms (older webkitAudioContext).
     return new Promise((resolve, reject) => {
         const ret = ctx.decodeAudioData(data, resolve, reject);
         if (ret && typeof (ret as Promise<AudioBuffer>).then === "function") {
@@ -457,15 +430,6 @@ function decodeAudio(ctx: AudioContext, data: ArrayBuffer): Promise<AudioBuffer>
     });
 }
 
-/**
- * Playback via a shared <audio> element. Used as the fallback when AudioContext
- * is unavailable, and as the PRIMARY path for gesture-less auto-play scenarios
- * (e.g. VN/漫卷 auto voice): a media element that was unlocked once keeps playing
- * programmatically, whereas resuming a suspended AudioContext far from any user
- * gesture is often rejected on Android Chrome/Edge (the "only plays with WeChat
- * keep-alive on" bug — the keep-alive's looping silent <audio> was what kept the
- * context alive). Bonus: media-element playback also obeys hardware volume keys.
- */
 export function playAudioBlobViaMediaElement(blob: Blob): { promise: Promise<void>; abort: () => void } {
     return playAudioBlobElement(blob);
 }
@@ -499,12 +463,6 @@ function playAudioBlobElement(blob: Blob): { promise: Promise<void>; abort: () =
     return { promise, abort: finalize };
 }
 
-/**
- * Play an audio blob through the Web Audio context and resolve when playback
- * ends. After playback the context is suspended so iOS releases the audio
- * session back to the microphone (lets SpeechRecognition restart next turn).
- * Returns an abort function to stop playback early. Playback is sequential.
- */
 export function playAudioBlob(blob: Blob): { promise: Promise<void>; abort: () => void } {
     const ctx = getAudioContext();
     if (!ctx) return playAudioBlobElement(blob);
@@ -512,7 +470,6 @@ export function playAudioBlob(blob: Blob): { promise: Promise<void>; abort: () =
     let settled = false;
     let resolveFn: () => void = () => {};
     let source: AudioBufferSourceNode | null = null;
-
     let gain: GainNode | null = null;
     let fallbackAbort: (() => void) | null = null;
 
@@ -526,7 +483,6 @@ export function playAudioBlob(blob: Blob): { promise: Promise<void>; abort: () =
         if (gain) { try { gain.disconnect(); } catch {} }
         if (_activeGain === gain) _activeGain = null;
         gain = null;
-        // Suspend so iOS hands the audio session back to the microphone.
         try { ctx.suspend(); } catch {}
     };
 
@@ -543,8 +499,6 @@ export function playAudioBlob(blob: Blob): { promise: Promise<void>; abort: () =
         (async () => {
             try {
                 if (ctx.state === "suspended") {
-                    // 程序化 resume 在部分安卓浏览器上会被拒绝，甚至让 promise 永远
-                    // 悬着（要等下一次用户手势）。限时等待后检查状态，走不通就回落。
                     await Promise.race([
                         ctx.resume().catch(() => {}),
                         new Promise(r => setTimeout(r, 800)),
@@ -555,7 +509,6 @@ export function playAudioBlob(blob: Blob): { promise: Promise<void>; abort: () =
                 if (settled) return;
                 source = ctx.createBufferSource();
                 source.buffer = audioBuffer;
-                // Route through a gain node so the in-app volume slider applies.
                 gain = ctx.createGain();
                 gain.gain.value = _ttsVolume;
                 source.connect(gain);
@@ -564,9 +517,6 @@ export function playAudioBlob(blob: Blob): { promise: Promise<void>; abort: () =
                 source.onended = finalize;
                 source.start();
             } catch {
-                // Web Audio 走不通（resume 被拒/解码失败等）时回落媒体元素播放：
-                // 宁可这一段绕过「iOS 归还麦克风」的优化，也不要静默无声——
-                // 此前这里直接 finalize，正是「语音条有声、通话没声」的来源之一。
                 if (settled) return;
                 cleanupWebAudio();
                 const fallback = playAudioBlobElement(blob);
