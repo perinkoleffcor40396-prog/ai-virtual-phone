@@ -10,7 +10,7 @@ import { ConfirmDialog } from "@/components/ui/modal";
 import { Toggle, Input } from "@/components/ui/form";
 import { Alert } from "@/components/ui/feedback";
 
-const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI", "ElevenLabs"]);
+const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI", "ElevenLabs", "F5-TTS"]);
 const MINIMAX_BASE_URL_OPTIONS = [
     { id: "cn", label: "国内版", baseUrl: "https://api.minimaxi.com/v1" },
     { id: "global", label: "海外版", baseUrl: "https://api.minimax.io/v1" },
@@ -34,6 +34,9 @@ const DEFAULT_ELEVENLABS_SIMILARITY = 0.75;
 const DEFAULT_ELEVENLABS_STYLE = 0;
 const DEFAULT_ELEVENLABS_SPEAKER_BOOST = true;
 const DEFAULT_ELEVENLABS_MODEL = "eleven_flash_v2_5";
+const DEFAULT_F5_TTS_BASE_URL = "http://127.0.0.1:7861";
+const DEFAULT_F5_TTS_MODEL = "F5TTS_v1_Base";
+const DEFAULT_F5_TTS_NFE_STEP = 32;
 const ELEVENLABS_MODELS = [
     { id: "eleven_v3", name: "Eleven v3（表现力最强）" },
     { id: "eleven_multilingual_v2", name: "Multilingual v2（高质量多语言）" },
@@ -58,6 +61,7 @@ const VOICE_PROVIDER_OPTIONS = [
     { value: "MinimaxCN", label: "Minimax 语音国内版" },
     { value: "MinimaxGlobal", label: "Minimax 语音海外版" },
     { value: "ElevenLabs", label: "ElevenLabs" },
+    { value: "F5-TTS", label: "F5-TTS（本机）" },
 ];
 
 const DEFAULT_VOICE_CONFIGS: VoiceApiConfig[] = [
@@ -211,7 +215,7 @@ function uniqueOptions(options: VoiceOption[]): VoiceOption[] {
 
 function defaultVoiceOptions(provider: string): VoiceOption[] {
     if (provider === "OpenAI") return DEFAULT_OPENAI_VOICES;
-    if (provider === "ElevenLabs") return [];
+    if (provider === "ElevenLabs" || provider === "F5-TTS") return [];
     return DEFAULT_MINIMAX_VOICES;
 }
 
@@ -253,6 +257,7 @@ function makeCloneVoiceId(config: VoiceApiConfig): string {
 function providerSelectValue(config: VoiceApiConfig): string {
     if (config.provider === "OpenAI") return "OpenAI";
     if (config.provider === "ElevenLabs") return "ElevenLabs";
+    if (config.provider === "F5-TTS") return "F5-TTS";
     return config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "MinimaxGlobal" : "MinimaxCN";
 }
 
@@ -357,6 +362,23 @@ export function VoiceSettings() {
                 elevenLabsSimilarity: current?.provider === "ElevenLabs" ? (current?.elevenLabsSimilarity ?? DEFAULT_ELEVENLABS_SIMILARITY) : DEFAULT_ELEVENLABS_SIMILARITY,
                 elevenLabsStyle: current?.provider === "ElevenLabs" ? (current?.elevenLabsStyle ?? DEFAULT_ELEVENLABS_STYLE) : DEFAULT_ELEVENLABS_STYLE,
                 elevenLabsSpeakerBoost: current?.provider === "ElevenLabs" ? (current?.elevenLabsSpeakerBoost ?? DEFAULT_ELEVENLABS_SPEAKER_BOOST) : DEFAULT_ELEVENLABS_SPEAKER_BOOST,
+            });
+            setManualModelIds(prev => ({ ...prev, [id]: false }));
+            setManualVoiceIds(prev => ({ ...prev, [id]: true }));
+            return;
+        }
+        if (providerOption === "F5-TTS") {
+            updateConfig(id, {
+                provider: "F5-TTS",
+                apiKey: "",
+                baseUrl: current?.provider === "F5-TTS" ? (current.baseUrl || DEFAULT_F5_TTS_BASE_URL) : DEFAULT_F5_TTS_BASE_URL,
+                model: current?.provider === "F5-TTS" ? (current.model || DEFAULT_F5_TTS_MODEL) : DEFAULT_F5_TTS_MODEL,
+                defaultVoice: current?.provider === "F5-TTS" ? (current.defaultVoice || "") : "",
+                f5RefAudio: current?.provider === "F5-TTS" ? (current.f5RefAudio || "") : "",
+                f5RefText: current?.provider === "F5-TTS" ? (current.f5RefText || "") : "",
+                f5NfeStep: current?.provider === "F5-TTS" ? (current.f5NfeStep ?? DEFAULT_F5_TTS_NFE_STEP) : DEFAULT_F5_TTS_NFE_STEP,
+                f5RemoveSilence: current?.provider === "F5-TTS" ? (current.f5RemoveSilence ?? false) : false,
+                speechSpeed: current?.provider === "F5-TTS" ? (current.speechSpeed ?? 1.0) : 1.0,
             });
             setManualModelIds(prev => ({ ...prev, [id]: false }));
             setManualVoiceIds(prev => ({ ...prev, [id]: true }));
@@ -550,7 +572,7 @@ export function VoiceSettings() {
             return;
         }
         if (!config.defaultVoice.trim()) {
-            setFetchError(prev => ({ ...prev, [config.id]: config.provider === "ElevenLabs" ? "请先填写 ElevenLabs Voice ID" : "请先选择默认音色" }));
+            setFetchError(prev => ({ ...prev, [config.id]: config.provider === "F5-TTS" ? "请先填写 F5-TTS 参考音频路径" : config.provider === "ElevenLabs" ? "请先填写 ElevenLabs Voice ID" : "请先选择默认音色" }));
             return;
         }
 
@@ -611,7 +633,7 @@ export function VoiceSettings() {
                                 <div className="min-w-0">
                                     <div className="truncate text-sm font-semibold text-gray-900">{config.name || "未命名语音"}</div>
                                     <div className="mt-1 text-xs text-gray-500">
-                                        {config.provider === "ElevenLabs" ? "ElevenLabs" : config.provider === "OpenAI" ? "OpenAI TTS" : config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "Minimax 海外版" : "Minimax 国内版"}
+                                        {config.provider === "F5-TTS" ? "F5-TTS 本机" : config.provider === "ElevenLabs" ? "ElevenLabs" : config.provider === "OpenAI" ? "OpenAI TTS" : config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "Minimax 海外版" : "Minimax 国内版"}
                                         {config.model ? ` · ${config.model}` : ""}
                                     </div>
                                 </div>
@@ -677,15 +699,17 @@ export function VoiceSettings() {
                                             </select>
                                         </div>
 
-                                        <div className="flex flex-col gap-1">
-                                            <label className="menu-desc ml-1">API Key</label>
-                                            <Input
-                                                type="password"
-                                                value={config.apiKey}
-                                                onChange={(e) => updateConfig(config.id, { apiKey: e.target.value })}
-                                                placeholder="输入密钥..."
-                                            />
-                                        </div>
+                                        {config.provider !== "F5-TTS" && (
+                                            <div className="flex flex-col gap-1">
+                                                <label className="menu-desc ml-1">API Key</label>
+                                                <Input
+                                                    type="password"
+                                                    value={config.apiKey}
+                                                    onChange={(e) => updateConfig(config.id, { apiKey: e.target.value })}
+                                                    placeholder="输入密钥..."
+                                                />
+                                            </div>
+                                        )}
                                         {config.provider === "OpenAI" && (
                                             <>
                                                 <div className="flex flex-col gap-1">
@@ -745,6 +769,79 @@ export function VoiceSettings() {
                                                         placeholder="whisper-1（留空使用默认）"
                                                     />
                                                     <span className="menu-desc ml-1">通话「按住说话」用它把录音转成文字（非 iOS 设备生效），走同一个接口地址与密钥</span>
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {config.provider === "F5-TTS" && (
+                                            <>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="menu-desc ml-1">本机 Bridge 地址</label>
+                                                    <Input
+                                                        type="text"
+                                                        value={config.baseUrl || DEFAULT_F5_TTS_BASE_URL}
+                                                        onChange={(e) => updateConfig(config.id, { baseUrl: e.target.value })}
+                                                        placeholder="http://127.0.0.1:7861"
+                                                    />
+                                                    <span className="menu-desc ml-1">先启动项目内的 scripts/f5-tts-server.py，再使用这个地址。</span>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="menu-desc ml-1">F5-TTS 模型</label>
+                                                    <Input
+                                                        type="text"
+                                                        value={config.model || DEFAULT_F5_TTS_MODEL}
+                                                        onChange={(e) => updateConfig(config.id, { model: e.target.value })}
+                                                        placeholder="F5TTS_v1_Base"
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="menu-desc ml-1">参考音频路径</label>
+                                                    <Input
+                                                        type="text"
+                                                        value={config.f5RefAudio || ""}
+                                                        onChange={(e) => updateConfig(config.id, { f5RefAudio: e.target.value, defaultVoice: e.target.value })}
+                                                        placeholder="例如 C:\\voices\\peter.wav"
+                                                    />
+                                                    <span className="menu-desc ml-1">这是运行 F5-TTS 的那台电脑上的音频文件路径，建议使用约 6–12 秒的干净人声。</span>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="menu-desc ml-1">参考音频文字（Reference Text）</label>
+                                                    <textarea
+                                                        value={config.f5RefText || ""}
+                                                        onChange={(e) => updateConfig(config.id, { f5RefText: e.target.value })}
+                                                        placeholder="填写参考音频里实际说的内容；留空则由 F5-TTS 自动转写。"
+                                                        className="ui-textarea min-h-[90px]"
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center justify-between px-1">
+                                                        <label className="menu-desc">语速 (Speed)</label>
+                                                        <span className="menu-label font-medium">{(config.speechSpeed ?? 1.0).toFixed(1)}×</span>
+                                                    </div>
+                                                    <input
+                                                        type="range" min={0.5} max={2} step={0.1}
+                                                        value={config.speechSpeed ?? 1.0}
+                                                        onChange={(e) => updateConfig(config.id, { speechSpeed: Number(e.target.value) })}
+                                                        className="w-full accent-black"
+                                                        aria-label="F5-TTS 语速"
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center justify-between px-1">
+                                                        <label className="menu-desc">推理步数 (NFE)</label>
+                                                        <span className="menu-label font-medium">{config.f5NfeStep ?? DEFAULT_F5_TTS_NFE_STEP}</span>
+                                                    </div>
+                                                    <input
+                                                        type="range" min={8} max={64} step={1}
+                                                        value={config.f5NfeStep ?? DEFAULT_F5_TTS_NFE_STEP}
+                                                        onChange={(e) => updateConfig(config.id, { f5NfeStep: Number(e.target.value) })}
+                                                        className="w-full accent-black"
+                                                        aria-label="F5-TTS NFE"
+                                                    />
+                                                </div>
+                                                <div className="ui-toggle-row">
+                                                    <span className="menu-label font-medium">移除生成音频静音</span>
+                                                    <Toggle checked={config.f5RemoveSilence ?? false} onChange={(v) => updateConfig(config.id, { f5RemoveSilence: v })} />
                                                 </div>
                                             </>
                                         )}
@@ -926,7 +1023,7 @@ export function VoiceSettings() {
                                             </>
                                         )}
 
-                                        <div className="flex flex-col gap-1">
+                                        <div className={config.provider === "F5-TTS" ? "hidden" : "flex flex-col gap-1"}>
                                             <label className="menu-desc ml-1">{config.provider === "ElevenLabs" ? "Voice ID" : "默认音色 (Default Voice) 或 自定义 Voice ID"}</label>
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex gap-2">

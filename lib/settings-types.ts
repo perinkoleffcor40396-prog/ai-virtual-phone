@@ -140,6 +140,14 @@ export type VoiceApiConfig = {
     languageBoost?: string;
     /** Provider-dependent speech speed. Minimax: 0.5-2.0x; ElevenLabs: 0.7-1.2x. */
     speechSpeed?: number;
+    /** F5-TTS local bridge reference audio file path. */
+    f5RefAudio?: string;
+    /** F5-TTS reference audio transcription. */
+    f5RefText?: string;
+    /** F5-TTS number of function evaluation steps. */
+    f5NfeStep?: number;
+    /** Remove silence from generated F5-TTS audio. */
+    f5RemoveSilence?: boolean;
     /** Minimax voice_setting.pitch（半音，±12）。缺省保持旧行为（0，原声）。 */
     speechPitch?: number;
     /** ElevenLabs voice_settings.stability (0..1). */

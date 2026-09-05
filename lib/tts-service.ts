@@ -26,6 +26,7 @@ export function resolveVoiceConfig(characterId: string, appId?: ContentAppId): V
  * - Minimax: REST API → hex-encoded mp3
  * - OpenAI: REST API → binary audio blob
  * - ElevenLabs: REST API → binary audio blob
+ * - F5-TTS: local bridge → binary wav blob
  */
 export async function synthesizeSpeech(
     text: string,
@@ -46,6 +47,10 @@ export async function synthesizeSpeech(
 
     if (provider === "ElevenLabs") {
         return synthesizeElevenLabs(text, voiceConfig);
+    }
+
+    if (provider === "F5-TTS") {
+        return synthesizeF5TTS(text, voiceConfig);
     }
 
     return null;
@@ -253,6 +258,38 @@ async function synthesizeElevenLabs(text: string, config: VoiceApiConfig): Promi
 
     const blob = await response.blob();
     return new Blob([await blob.arrayBuffer()], { type: "audio/mpeg" });
+}
+
+
+// ── F5-TTS local bridge ──────────────────────────────
+// F5-TTS runs as a local Python process on the user's machine. The bridge
+// keeps the model loaded and exposes a tiny HTTP endpoint returning WAV data.
+async function synthesizeF5TTS(text: string, config: VoiceApiConfig): Promise<Blob | null> {
+    const baseUrl = (config.baseUrl || "http://127.0.0.1:7861").replace(/\/$/, "");
+    const refAudio = config.f5RefAudio?.trim() || config.defaultVoice?.trim();
+    if (!refAudio) throw new Error("F5-TTS 参考音频未配置");
+
+    const response = await fetchWithTimeout(`${baseUrl}/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            text,
+            ref_audio: refAudio,
+            ref_text: config.f5RefText || "",
+            model: config.model || "F5TTS_v1_Base",
+            nfe_step: config.f5NfeStep ?? 32,
+            speed: config.speechSpeed ?? 1.0,
+            remove_silence: config.f5RemoveSilence ?? false,
+        }),
+    });
+
+    if (!response.ok) {
+        const errText = await response.text().catch(() => "");
+        throw new Error(`F5-TTS 请求失败 (${response.status}): ${errText.slice(0, 500)}`);
+    }
+
+    const blob = await response.blob();
+    return new Blob([await blob.arrayBuffer()], { type: "audio/wav" });
 }
 
 // ── iOS audio playback that coexists with speech recognition ──────────
