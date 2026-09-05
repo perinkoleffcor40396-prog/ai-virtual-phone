@@ -16,22 +16,29 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
+
           p = Path('components/settings/voice-settings.tsx')
           s = p.read_text(encoding='utf-8')
 
-          def replace(old, new, label):
+          def once(pattern, repl, label, flags=0):
               global s
-              if old not in s:
+              s2, n = re.subn(pattern, repl, s, count=1, flags=flags)
+              if n != 1:
                   raise SystemExit(f'{label}: target not found')
-              s = s.replace(old, new, 1)
+              s = s2
 
-          replace('import { synthesizeSpeech } from "@/lib/tts-service";\n', 'import { synthesizeSpeech } from "@/lib/tts-service";\nimport { INWORLD_TTS_MODELS, DEFAULT_INWORLD_TTS_MODEL, INWORLD_TTS_BASE_URL } from "@/lib/inworld-tts";\n', 'import')
-          replace('const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI", "ElevenLabs", "F5-TTS"]);', 'const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI", "ElevenLabs", "F5-TTS", "Inworld"]);', 'providers')
-          replace('    { value: "F5-TTS", label: "F5-TTS（本机）" },\n];', '    { value: "F5-TTS", label: "F5-TTS（本机）" },\n    { value: "Inworld", label: "Inworld AI" },\n];', 'provider options')
-          replace('    if (provider === "ElevenLabs" || provider === "F5-TTS") return [];', '    if (provider === "ElevenLabs" || provider === "F5-TTS" || provider === "Inworld") return [];', 'voice options')
-          replace('    if (config.provider === "F5-TTS") return "F5-TTS";\n    return config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "MinimaxGlobal" : "MinimaxCN";', '    if (config.provider === "F5-TTS") return "F5-TTS";\n    if (config.provider === "Inworld") return "Inworld";\n    return config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "MinimaxGlobal" : "MinimaxCN";', 'provider select')
-          marker = '        if (providerOption === "F5-TTS") {'
-          insert = '''        if (providerOption === "Inworld") {
+          if 'INWORLD_TTS_MODELS' not in s:
+              once(r'(import \{ synthesizeSpeech \} from "@/lib/tts-service";\n)', r'\1import { INWORLD_TTS_MODELS, DEFAULT_INWORLD_TTS_MODEL, INWORLD_TTS_BASE_URL } from "@/lib/inworld-tts";\n', 'import')
+          if '"Inworld"' not in s[s.find('SUPPORTED_VOICE_PROVIDERS'):s.find('const MINIMAX_BASE_URL_OPTIONS')]:
+              once(r'const SUPPORTED_VOICE_PROVIDERS = new Set\(\[([^\]]*)\]\);', lambda m: 'const SUPPORTED_VOICE_PROVIDERS = new Set([' + m.group(1).rstrip() + ', "Inworld"]);', 'supported providers')
+          if '{ value: "Inworld", label: "Inworld AI" }' not in s:
+              once(r'(\{ value: "F5-TTS", label: "F5-TTS（本机）" \},\n\];)', r'{ value: "F5-TTS", label: "F5-TTS（本机）" },\n    { value: "Inworld", label: "Inworld AI" },\n];', 'provider options')
+          once(r'(function defaultVoiceOptions\(provider: string\): VoiceOption\[\] \{.*?if \(provider === "ElevenLabs" \|\| provider === "F5-TTS"\)) return \[\];', r'\1 || provider === "Inworld") return [];', 'voice options', re.S)
+          if 'if (config.provider === "Inworld") return "Inworld";' not in s:
+              once(r'(if \(config\.provider === "F5-TTS"\) return "F5-TTS";\n)', r'\1    if (config.provider === "Inworld") return "Inworld";\n', 'provider select')
+          if 'providerOption === "Inworld"' not in s:
+              once(r'(        if \(providerOption === "F5-TTS"\) \{)', '''        if (providerOption === "Inworld") {
             updateConfig(id, {
                 provider: "Inworld",
                 baseUrl: current?.provider === "Inworld" ? (current.baseUrl || INWORLD_TTS_BASE_URL) : INWORLD_TTS_BASE_URL,
@@ -43,16 +50,19 @@ jobs:
             setManualVoiceIds(prev => ({ ...prev, [id]: true }));
             return;
         }
-'''
-          replace(marker, insert + marker, 'provider branch')
-          replace('config.provider === "F5-TTS" ? "F5-TTS 本机" : config.provider === "ElevenLabs" ? "ElevenLabs" : config.provider === "OpenAI" ? "OpenAI TTS" : config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "Minimax 海外版" : "Minimax 国内版"', 'config.provider === "F5-TTS" ? "F5-TTS 本机" : config.provider === "Inworld" ? "Inworld AI" : config.provider === "ElevenLabs" ? "ElevenLabs" : config.provider === "OpenAI" ? "OpenAI TTS" : config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "Minimax 海外版" : "Minimax 国内版"', 'provider label')
-          replace('config.provider === "F5-TTS" ? "请先填写 F5-TTS 参考音频路径" : config.provider === "ElevenLabs" ? "请先填写 ElevenLabs Voice ID" : "请先选择默认音色"', 'config.provider === "F5-TTS" ? "请先填写 F5-TTS 参考音频路径" : config.provider === "ElevenLabs" ? "请先填写 ElevenLabs Voice ID" : config.provider === "Inworld" ? "请先填写 Inworld Voice ID" : "请先选择默认音色"', 'voice error')
-          replace(': config.provider === "ElevenLabs"\n                    ? "你好，很高兴认识你。这是一段 ElevenLabs 语音试听。"\n                    : "你好，我现在是"', ': config.provider === "ElevenLabs"\n                    ? "你好，很高兴认识你。这是一段 ElevenLabs 语音试听。"\n                    : config.provider === "Inworld"\n                        ? "你好，很高兴认识你。这是一段 Inworld AI 语音试听。"\n                        : "你好，我现在是"', 'preview')
-          replace('{config.provider !== "ElevenLabs" && (', '{!["ElevenLabs", "Inworld"].includes(config.provider) && (', 'fetch visibility')
-          replace('<label className="menu-desc ml-1">{config.provider === "ElevenLabs" ? "Voice ID" : "默认音色 (Default Voice) 或 自定义 Voice ID"}</label>', '<label className="menu-desc ml-1">{config.provider === "ElevenLabs" || config.provider === "Inworld" ? "Voice ID" : "默认音色 (Default Voice) 或 自定义 Voice ID"}</label>', 'voice label')
-          replace('placeholder={config.provider === "OpenAI" ? "alloy" : config.provider === "ElevenLabs" ? "例如 21m00Tcm4TlvDq8ikWAM" : "male-qn-qingse 或克隆 Voice ID"}', 'placeholder={config.provider === "OpenAI" ? "alloy" : config.provider === "ElevenLabs" ? "例如 21m00Tcm4TlvDq8ikWAM" : config.provider === "Inworld" ? "粘贴 Inworld 克隆后的 Voice ID" : "male-qn-qingse 或克隆 Voice ID"}', 'voice placeholder')
-          marker = '                                        {config.provider === "ElevenLabs" && ('
-          block = '''                                        {config.provider === "Inworld" && (
+\1''', 'provider branch')
+          if 'config.provider === "Inworld" ? "Inworld AI"' not in s:
+              once(r'config\.provider === "F5-TTS" \? "F5-TTS 本机" : config\.provider === "ElevenLabs" \? "ElevenLabs" : config\.provider === "OpenAI" \? "OpenAI TTS" : config\.baseUrl === GLOBAL_MINIMAX_BASE_URL \? "Minimax 海外版" : "Minimax 国内版"', 'config.provider === "F5-TTS" ? "F5-TTS 本机" : config.provider === "Inworld" ? "Inworld AI" : config.provider === "ElevenLabs" ? "ElevenLabs" : config.provider === "OpenAI" ? "OpenAI TTS" : config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "Minimax 海外版" : "Minimax 国内版"', 'provider label')
+          if '请先填写 Inworld Voice ID' not in s:
+              once(r'config\.provider === "F5-TTS" \? "请先填写 F5-TTS 参考音频路径" : config\.provider === "ElevenLabs" \? "请先填写 ElevenLabs Voice ID" : "请先选择默认音色"', 'config.provider === "F5-TTS" ? "请先填写 F5-TTS 参考音频路径" : config.provider === "ElevenLabs" ? "请先填写 ElevenLabs Voice ID" : config.provider === "Inworld" ? "请先填写 Inworld Voice ID" : "请先选择默认音色"', 'voice error')
+          if 'Inworld AI 语音试听' not in s:
+              once(r'(: config\.provider === "ElevenLabs"\n\s*\? "你好，很高兴认识你。这是一段 ElevenLabs 语音试听。"\n\s*: "你好，我现在是")', ': config.provider === "ElevenLabs"\n                    ? "你好，很高兴认识你。这是一段 ElevenLabs 语音试听。"\n                    : config.provider === "Inworld"\n                        ? "你好，很高兴认识你。这是一段 Inworld AI 语音试听。"\n                        : "你好，我现在是"', 'preview')
+          s = s.replace('{config.provider !== "ElevenLabs" && (', '{!["ElevenLabs", "Inworld"].includes(config.provider) && (', 1)
+          s = s.replace('<label className="menu-desc ml-1">{config.provider === "ElevenLabs" ? "Voice ID" : "默认音色 (Default Voice) 或 自定义 Voice ID"}</label>', '<label className="menu-desc ml-1">{config.provider === "ElevenLabs" || config.provider === "Inworld" ? "Voice ID" : "默认音色 (Default Voice) 或 自定义 Voice ID"}</label>', 1)
+          s = s.replace('placeholder={config.provider === "OpenAI" ? "alloy" : config.provider === "ElevenLabs" ? "例如 21m00Tcm4TlvDq8ikWAM" : "male-qn-qingse 或克隆 Voice ID"}', 'placeholder={config.provider === "OpenAI" ? "alloy" : config.provider === "ElevenLabs" ? "例如 21m00Tcm4TlvDq8ikWAM" : config.provider === "Inworld" ? "粘贴 Inworld 克隆后的 Voice ID" : "male-qn-qingse 或克隆 Voice ID"}', 1)
+          if 'config.provider === "Inworld" && (' not in s:
+              once(r'(\s+\{config\.provider === "ElevenLabs" && \()', '''
+                                        {config.provider === "Inworld" && (
                                             <div className="flex flex-col gap-1">
                                                 <label className="menu-desc ml-1">语音模型 (TTS Model)</label>
                                                 <select
@@ -66,9 +76,7 @@ jobs:
                                                 </select>
                                             </div>
                                         )}
-
-'''
-          replace(marker, block + marker, 'model UI')
+\1''', 'model UI')
           p.write_text(s, encoding='utf-8')
           PY
       - name: Commit patch and remove workflow
