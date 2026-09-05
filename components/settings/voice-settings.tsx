@@ -9,8 +9,9 @@ import { synthesizeSpeech } from "@/lib/tts-service";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { Toggle, Input } from "@/components/ui/form";
 import { Alert } from "@/components/ui/feedback";
+import { INWORLD_TTS_MODELS, DEFAULT_INWORLD_TTS_MODEL, DEFAULT_INWORLD_BASE_URL } from "@/lib/inworld-tts";
 
-const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI", "ElevenLabs", "F5-TTS"]);
+const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI", "ElevenLabs", "F5-TTS", "Inworld"]);
 const MINIMAX_BASE_URL_OPTIONS = [
     { id: "cn", label: "国内版", baseUrl: "https://api.minimaxi.com/v1" },
     { id: "global", label: "海外版", baseUrl: "https://api.minimax.io/v1" },
@@ -62,6 +63,7 @@ const VOICE_PROVIDER_OPTIONS = [
     { value: "MinimaxGlobal", label: "Minimax 语音海外版" },
     { value: "ElevenLabs", label: "ElevenLabs" },
     { value: "F5-TTS", label: "F5-TTS（本机）" },
+    { value: "Inworld", label: "Inworld AI" },
 ];
 
 const DEFAULT_VOICE_CONFIGS: VoiceApiConfig[] = [
@@ -215,7 +217,7 @@ function uniqueOptions(options: VoiceOption[]): VoiceOption[] {
 
 function defaultVoiceOptions(provider: string): VoiceOption[] {
     if (provider === "OpenAI") return DEFAULT_OPENAI_VOICES;
-    if (provider === "ElevenLabs" || provider === "F5-TTS") return [];
+    if (provider === "ElevenLabs" || provider === "F5-TTS" || provider === "Inworld") return [];
     return DEFAULT_MINIMAX_VOICES;
 }
 
@@ -258,6 +260,7 @@ function providerSelectValue(config: VoiceApiConfig): string {
     if (config.provider === "OpenAI") return "OpenAI";
     if (config.provider === "ElevenLabs") return "ElevenLabs";
     if (config.provider === "F5-TTS") return "F5-TTS";
+    if (config.provider === "Inworld") return "Inworld";
     return config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "MinimaxGlobal" : "MinimaxCN";
 }
 
@@ -379,6 +382,26 @@ export function VoiceSettings() {
                 f5NfeStep: current?.provider === "F5-TTS" ? (current.f5NfeStep ?? DEFAULT_F5_TTS_NFE_STEP) : DEFAULT_F5_TTS_NFE_STEP,
                 f5RemoveSilence: current?.provider === "F5-TTS" ? (current.f5RemoveSilence ?? false) : false,
                 speechSpeed: current?.provider === "F5-TTS" ? (current.speechSpeed ?? 1.0) : 1.0,
+            });
+            setManualModelIds(prev => ({ ...prev, [id]: false }));
+            setManualVoiceIds(prev => ({ ...prev, [id]: true }));
+            return;
+        }
+        if (providerOption === "Inworld") {
+            updateConfig(id, {
+                provider: "Inworld",
+                baseUrl: current?.provider === "Inworld"
+                    ? (current.baseUrl || DEFAULT_INWORLD_BASE_URL)
+                    : DEFAULT_INWORLD_BASE_URL,
+                model: current?.provider === "Inworld"
+                    ? (current.model || DEFAULT_INWORLD_TTS_MODEL)
+                    : DEFAULT_INWORLD_TTS_MODEL,
+                defaultVoice: current?.provider === "Inworld"
+                    ? (current.defaultVoice || "")
+                    : "",
+                speechSpeed: current?.provider === "Inworld"
+                    ? (current.speechSpeed ?? 1.0)
+                    : 1.0,
             });
             setManualModelIds(prev => ({ ...prev, [id]: false }));
             setManualVoiceIds(prev => ({ ...prev, [id]: true }));
@@ -572,7 +595,7 @@ export function VoiceSettings() {
             return;
         }
         if (!config.defaultVoice.trim()) {
-            setFetchError(prev => ({ ...prev, [config.id]: config.provider === "F5-TTS" ? "请先填写 F5-TTS 参考音频路径" : config.provider === "ElevenLabs" ? "请先填写 ElevenLabs Voice ID" : "请先选择默认音色" }));
+            setFetchError(prev => ({ ...prev, [config.id]: config.provider === "F5-TTS" ? "请先填写 F5-TTS 参考音频路径" : config.provider === "ElevenLabs" ? "请先填写 ElevenLabs Voice ID" : config.provider === "Inworld" ? "请先填写 Inworld Voice ID" : "请先选择默认音色" }));
             return;
         }
 
@@ -583,7 +606,9 @@ export function VoiceSettings() {
                 ? MINIMAX_PREVIEW_TEXT[config.languageBoost] || "你好，很高兴认识你。这是一段语音试听。"
                 : config.provider === "ElevenLabs"
                     ? "你好，很高兴认识你。这是一段 ElevenLabs 语音试听。"
-                    : "你好，我现在是" + (config.defaultVoice || "默认") + "音色。很高兴认识你。";
+                    : config.provider === "Inworld"
+                        ? "你好，很高兴认识你。这是一段 Inworld AI 语音试听。"
+                        : "你好，我现在是" + (config.defaultVoice || "默认") + "音色。很高兴认识你。";
             const blob = await synthesizeSpeech(previewText, config);
             if (!blob) throw new Error("语音生成失败");
             const url = URL.createObjectURL(blob);
@@ -633,7 +658,7 @@ export function VoiceSettings() {
                                 <div className="min-w-0">
                                     <div className="truncate text-sm font-semibold text-gray-900">{config.name || "未命名语音"}</div>
                                     <div className="mt-1 text-xs text-gray-500">
-                                        {config.provider === "F5-TTS" ? "F5-TTS 本机" : config.provider === "ElevenLabs" ? "ElevenLabs" : config.provider === "OpenAI" ? "OpenAI TTS" : config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "Minimax 海外版" : "Minimax 国内版"}
+                                        {config.provider === "F5-TTS" ? "F5-TTS 本机" : config.provider === "ElevenLabs" ? "ElevenLabs" : config.provider === "OpenAI" ? "OpenAI TTS" : config.provider === "Inworld" ? "Inworld AI" : config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "Minimax 海外版" : "Minimax 国内版"}
                                         {config.model ? ` · ${config.model}` : ""}
                                     </div>
                                 </div>
@@ -922,6 +947,21 @@ export function VoiceSettings() {
                                             </>
                                         )}
 
+                                        {config.provider === "Inworld" && (
+                                            <div className="flex flex-col gap-1">
+                                                <label className="menu-desc ml-1">语音模型 (TTS Model)</label>
+                                                <select
+                                                    value={INWORLD_TTS_MODELS.some(model => model.id === config.model) ? config.model : DEFAULT_INWORLD_TTS_MODEL}
+                                                    onChange={(e) => updateConfig(config.id, { model: e.target.value })}
+                                                    className="ui-select"
+                                                >
+                                                    {INWORLD_TTS_MODELS.map(model => (
+                                                        <option key={model.id} value={model.id}>{model.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+
                                         {config.provider === "Minimax" && (
                                             <>
                                                 <div className="flex flex-col gap-1">
@@ -1024,7 +1064,7 @@ export function VoiceSettings() {
                                         )}
 
                                         <div className={config.provider === "F5-TTS" ? "hidden" : "flex flex-col gap-1"}>
-                                            <label className="menu-desc ml-1">{config.provider === "ElevenLabs" ? "Voice ID" : "默认音色 (Default Voice) 或 自定义 Voice ID"}</label>
+                                            <label className="menu-desc ml-1">{config.provider === "ElevenLabs" || config.provider === "Inworld" ? "Voice ID" : "默认音色 (Default Voice) 或 自定义 Voice ID"}</label>
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex gap-2">
                                                     {manualVoiceIds[config.id] ? (
@@ -1033,7 +1073,7 @@ export function VoiceSettings() {
                                                                 type="text"
                                                                 value={config.defaultVoice}
                                                                 onChange={(e) => updateConfig(config.id, { defaultVoice: e.target.value })}
-                                                                placeholder={config.provider === "OpenAI" ? "alloy" : config.provider === "ElevenLabs" ? "例如 21m00Tcm4TlvDq8ikWAM" : "male-qn-qingse 或克隆 Voice ID"}
+                                                                placeholder={config.provider === "OpenAI" ? "alloy" : config.provider === "ElevenLabs" ? "例如 21m00Tcm4TlvDq8ikWAM" : config.provider === "Inworld" ? "粘贴 Inworld 克隆后的 Voice ID" : "male-qn-qingse 或克隆 Voice ID"}
                                                                 className="flex-1"
                                                             />
                                                             <button
@@ -1079,7 +1119,7 @@ export function VoiceSettings() {
                                                 </div>
 
                                                 <div className="flex gap-2 mt-0.5">
-                                                    {config.provider !== "ElevenLabs" && (
+                                                    {!['ElevenLabs', 'Inworld'].includes(config.provider) && (
                                                         <button
                                                             onClick={() => fetchVoices(config)}
                                                             disabled={isFetching[config.id]}
