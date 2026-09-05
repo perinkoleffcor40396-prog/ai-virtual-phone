@@ -1,0 +1,81 @@
+name: One-time Inworld TTS UI Integration
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Inworld provider into voice settings
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('components/settings/voice-settings.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          def replace(old, new, label):
+              global s
+              if old not in s:
+                  raise SystemExit(f'{label}: target not found')
+              s = s.replace(old, new, 1)
+
+          replace('import { synthesizeSpeech } from "@/lib/tts-service";\n', 'import { synthesizeSpeech } from "@/lib/tts-service";\nimport { INWORLD_TTS_MODELS, DEFAULT_INWORLD_TTS_MODEL, INWORLD_TTS_BASE_URL } from "@/lib/inworld-tts";\n', 'import')
+          replace('const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI", "ElevenLabs", "F5-TTS"]);', 'const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI", "ElevenLabs", "F5-TTS", "Inworld"]);', 'providers')
+          replace('    { value: "F5-TTS", label: "F5-TTS（本机）" },\n];', '    { value: "F5-TTS", label: "F5-TTS（本机）" },\n    { value: "Inworld", label: "Inworld AI" },\n];', 'provider options')
+          replace('    if (provider === "ElevenLabs" || provider === "F5-TTS") return [];', '    if (provider === "ElevenLabs" || provider === "F5-TTS" || provider === "Inworld") return [];', 'voice options')
+          replace('    if (config.provider === "F5-TTS") return "F5-TTS";\n    return config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "MinimaxGlobal" : "MinimaxCN";', '    if (config.provider === "F5-TTS") return "F5-TTS";\n    if (config.provider === "Inworld") return "Inworld";\n    return config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "MinimaxGlobal" : "MinimaxCN";', 'provider select')
+          marker = '        if (providerOption === "F5-TTS") {'
+          insert = '''        if (providerOption === "Inworld") {
+            updateConfig(id, {
+                provider: "Inworld",
+                baseUrl: current?.provider === "Inworld" ? (current.baseUrl || INWORLD_TTS_BASE_URL) : INWORLD_TTS_BASE_URL,
+                model: current?.provider === "Inworld" ? (current.model || DEFAULT_INWORLD_TTS_MODEL) : DEFAULT_INWORLD_TTS_MODEL,
+                defaultVoice: current?.provider === "Inworld" ? (current.defaultVoice || "") : "",
+                speechSpeed: current?.provider === "Inworld" ? (current.speechSpeed ?? 1.0) : 1.0,
+            });
+            setManualModelIds(prev => ({ ...prev, [id]: false }));
+            setManualVoiceIds(prev => ({ ...prev, [id]: true }));
+            return;
+        }
+'''
+          replace(marker, insert + marker, 'provider branch')
+          replace('config.provider === "F5-TTS" ? "F5-TTS 本机" : config.provider === "ElevenLabs" ? "ElevenLabs" : config.provider === "OpenAI" ? "OpenAI TTS" : config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "Minimax 海外版" : "Minimax 国内版"', 'config.provider === "F5-TTS" ? "F5-TTS 本机" : config.provider === "Inworld" ? "Inworld AI" : config.provider === "ElevenLabs" ? "ElevenLabs" : config.provider === "OpenAI" ? "OpenAI TTS" : config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "Minimax 海外版" : "Minimax 国内版"', 'provider label')
+          replace('config.provider === "F5-TTS" ? "请先填写 F5-TTS 参考音频路径" : config.provider === "ElevenLabs" ? "请先填写 ElevenLabs Voice ID" : "请先选择默认音色"', 'config.provider === "F5-TTS" ? "请先填写 F5-TTS 参考音频路径" : config.provider === "ElevenLabs" ? "请先填写 ElevenLabs Voice ID" : config.provider === "Inworld" ? "请先填写 Inworld Voice ID" : "请先选择默认音色"', 'voice error')
+          replace(': config.provider === "ElevenLabs"\n                    ? "你好，很高兴认识你。这是一段 ElevenLabs 语音试听。"\n                    : "你好，我现在是"', ': config.provider === "ElevenLabs"\n                    ? "你好，很高兴认识你。这是一段 ElevenLabs 语音试听。"\n                    : config.provider === "Inworld"\n                        ? "你好，很高兴认识你。这是一段 Inworld AI 语音试听。"\n                        : "你好，我现在是"', 'preview')
+          replace('{config.provider !== "ElevenLabs" && (', '{!["ElevenLabs", "Inworld"].includes(config.provider) && (', 'fetch visibility')
+          replace('<label className="menu-desc ml-1">{config.provider === "ElevenLabs" ? "Voice ID" : "默认音色 (Default Voice) 或 自定义 Voice ID"}</label>', '<label className="menu-desc ml-1">{config.provider === "ElevenLabs" || config.provider === "Inworld" ? "Voice ID" : "默认音色 (Default Voice) 或 自定义 Voice ID"}</label>', 'voice label')
+          replace('placeholder={config.provider === "OpenAI" ? "alloy" : config.provider === "ElevenLabs" ? "例如 21m00Tcm4TlvDq8ikWAM" : "male-qn-qingse 或克隆 Voice ID"}', 'placeholder={config.provider === "OpenAI" ? "alloy" : config.provider === "ElevenLabs" ? "例如 21m00Tcm4TlvDq8ikWAM" : config.provider === "Inworld" ? "粘贴 Inworld 克隆后的 Voice ID" : "male-qn-qingse 或克隆 Voice ID"}', 'voice placeholder')
+          marker = '                                        {config.provider === "ElevenLabs" && ('
+          block = '''                                        {config.provider === "Inworld" && (
+                                            <div className="flex flex-col gap-1">
+                                                <label className="menu-desc ml-1">语音模型 (TTS Model)</label>
+                                                <select
+                                                    value={INWORLD_TTS_MODELS.some(model => model.id === config.model) ? config.model : DEFAULT_INWORLD_TTS_MODEL}
+                                                    onChange={(e) => updateConfig(config.id, { model: e.target.value })}
+                                                    className="ui-select"
+                                                >
+                                                    {INWORLD_TTS_MODELS.map(model => (
+                                                        <option key={model.id} value={model.id}>{model.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+
+'''
+          replace(marker, block + marker, 'model UI')
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit patch and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/settings/voice-settings.tsx
+          git rm .github/workflows/one-time-inworld-tts.yml
+          git commit -m "feat: add Inworld AI TTS provider to voice settings"
+          git push
