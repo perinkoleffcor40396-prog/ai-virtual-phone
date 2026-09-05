@@ -101,51 +101,82 @@ export function inferPeterVocalState(text: string, userContext = ""): PeterVocal
 }
 
 /**
- * Turn a state into a small performance profile.
- * These are intentionally short natural-language audio tags: they guide delivery
- * without rewriting Peter's dialogue or adding another model call.
+ * Add a small performance profile rather than merely naming an emotion.
+ * The tags are intentionally sparse so Peter keeps a natural baseline.
  */
 function tagsForState(state: PeterVocalState, text: string, userContext: string): string[] {
     const t = normalize(text);
     const u = normalize(userContext);
     const shortLine = text.trim().length <= 32;
+    const hasEllipsis = /\.\.\.|……/.test(text);
+    const hasQuestion = /[?？]/.test(text);
+    const hasExclamation = /[!！]/.test(text);
+    const hasComma = /[,，]/.test(text);
 
     switch (state) {
         case "apologetic":
             return has(t, /\b(i'm sorry|i am sorry|my bad)\b/) ? ["sighs", "softly"] : ["softly"];
         case "affectionate":
-            return shortLine ? ["softly"] : ["softly"];
+            return shortLine ? ["softly"] : ["softly", "warmly"];
         case "reassuring":
-            return ["softly"];
+            return shortLine ? ["softly"] : ["softly", "calmly"];
         case "worried":
             return ["worried", "softly"];
         case "angry":
-            return ["angry"];
+            return hasExclamation ? ["angry"] : ["angry", "firmly"];
         case "annoyed":
-            return ["sarcastic"];
+            return hasQuestion ? ["sarcastic"] : ["sarcastic"];
         case "surprised":
             return ["surprised"];
         case "excited":
-            return ["excited"];
+            return hasExclamation || shortLine ? ["excited"] : ["excited", "quickly"];
         case "amused":
             return has(t, /\b(haha|lol|lmao)\b/) ? ["laughs"] : ["amused"];
         case "playful":
-            return ["playful"];
+            return shortLine ? ["playful"] : ["playful", "lightly"];
         case "sarcastic":
             return ["sarcastic"];
         case "embarrassed":
-            return ["nervous"];
+            return hasEllipsis || hasComma ? ["nervous", "softly"] : ["nervous"];
         case "nervous":
-            return ["nervous", "softly"];
+            return hasEllipsis ? ["nervous", "softly"] : ["nervous", "hesitantly"];
         case "sad":
-            return ["sad", "softly"];
+            return shortLine ? ["sad", "softly"] : ["sad", "softly", "slowly"];
         case "self_deprecating":
             return has(t, /\b(i'm|i am|of course|classic me)\b/) ? ["sighs", "amused"] : ["amused"];
         default:
-            // Keep ordinary lines completely clean. Only use a soft delivery cue
-            // when the social context clearly calls for reassurance/seriousness.
-            return has(u, /\b(seriously|really|are you okay|please|i need you)\b/) && shortLine ? ["softly"] : [];
+            // Ordinary lines stay clean. Context can still make a short serious
+            // answer gently spoken without forcing an artificial emotion.
+            if (has(u, /\b(seriously|really|are you okay|please|i need you)\b/) && shortLine) return ["softly"];
+            return [];
     }
+}
+
+/**
+ * Apply a tiny rhythm cue when Peter's wording already implies a change of pace.
+ * We never rewrite his actual dialogue: punctuation and wording remain intact.
+ */
+function rhythmTags(state: PeterVocalState, text: string): string[] {
+    const trimmed = text.trim();
+    const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
+    const tags: string[] = [];
+
+    if (state === "nervous" || state === "embarrassed") {
+        if (/\.\.\.|……/.test(trimmed)) tags.push("hesitates");
+        else if (wordCount <= 12) tags.push("hesitantly");
+    } else if (state === "excited") {
+        if (wordCount >= 12 || /!{2,}|！{2,}/.test(trimmed)) tags.push("quickly");
+    } else if (state === "sad") {
+        if (wordCount >= 10) tags.push("slowly");
+    } else if (state === "reassuring" || state === "affectionate") {
+        if (wordCount >= 14) tags.push("with gentle pauses");
+    } else if (state === "surprised") {
+        if (/^["'“”‘’]?\s*(wait|what|huh|no way|oh my god)\b/i.test(trimmed)) tags.push("with a startled pause");
+    } else if (state === "self_deprecating") {
+        if (wordCount >= 8) tags.push("with a small pause");
+    }
+
+    return tags;
 }
 
 /** Prepare the exact transcript sent to Eleven v3. Non-v3 models are untouched. */
@@ -159,7 +190,12 @@ export function preparePeterVocalDelivery(
 
     const userContext = Date.now() - latestUserContextAt <= 120_000 ? latestUserContext : "";
     const state = inferPeterVocalState(text, userContext);
-    const tags = tagsForState(state, text, userContext);
+    const baseTags = tagsForState(state, text, userContext);
+    const rhythm = rhythmTags(state, text);
+
+    // Keep the tag stack deliberately small. Too many simultaneous directions can
+    // make v3 less predictable and less natural.
+    const tags = [...baseTags, ...rhythm].slice(0, 3);
     if (tags.length === 0) return { state, tags: [], text };
     return { state, tags, text: `${tags.map(tag => `[${tag}]`).join(" ")} ${text}` };
 }
