@@ -30,6 +30,35 @@ function decodeBase64Audio(audioContent: string): Uint8Array {
     return bytes;
 }
 
+function normalizeVocalState(value?: string): VocalState {
+    const state = value?.trim().toLowerCase();
+    const aliases: Record<string, VocalState> = {
+        neutral: "neutral",
+        calm: "neutral",
+        happy: "amused",
+        amused: "amused",
+        playful: "amused",
+        sarcastic: "sarcastic",
+        sarcasm: "sarcastic",
+        embarrassed: "embarrassed",
+        embarrassment: "embarrassed",
+        shy: "embarrassed",
+        annoyed: "annoyed",
+        frustrated: "annoyed",
+        angry: "angry",
+        rage: "angry",
+        sad: "sad",
+        sorrowful: "sad",
+        excited: "excited",
+        enthusiastic: "excited",
+        affectionate: "affectionate",
+        loving: "affectionate",
+        surprised: "surprised",
+        surprise: "surprised",
+    };
+    return aliases[state || ""] || "neutral";
+}
+
 /**
  * Detect a lightweight vocal state without another LLM call.
  * This is intentionally conservative: most lines remain neutral.
@@ -64,6 +93,7 @@ function isMjVoiceConfig(config: VoiceApiConfig): boolean {
 export async function synthesizeInworld(
     text: string,
     config: VoiceApiConfig,
+    options?: { emotion?: string },
     timeoutMs = 120_000,
 ): Promise<Blob> {
     if (!config.apiKey?.trim()) throw new Error("Inworld API Key 未配置");
@@ -74,7 +104,9 @@ export async function synthesizeInworld(
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const isMj = isMjVoiceConfig(config);
     const modelId = isMj ? STEERABLE_INWORLD_MODEL : (config.model || DEFAULT_INWORLD_MODEL);
-    const vocalState = isMj ? detectVocalState(text) : "neutral";
+    const vocalState = isMj
+        ? (options?.emotion ? normalizeVocalState(options.emotion) : detectVocalState(text))
+        : "neutral";
     const steering = isMj ? `[${MJ_VOCAL_STEERING[vocalState]}] ` : "";
     const ttsText = `${steering}${text}`;
 
