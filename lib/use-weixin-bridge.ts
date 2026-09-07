@@ -32,12 +32,13 @@ let _keepAliveAudio: HTMLAudioElement | null = null;
 
 let _keepAliveWanted = false; // 标记：想要保活但还没获得用户手势
 let _suspendedForCall = false; // 标记：因语音/视频通话临时暂停了保活
+let _suspendedForMedia = false; // 标记：因其他音频/视频播放临时暂停了保活
 
 function ensureAudioCreated() {
     if (_keepAliveAudio) return;
     _keepAliveAudio = new Audio();
-    // 生成 1 秒静音 WAV
-    const sampleRate = 8000;
+    // 生成 1 秒微弱音频：使用 44.1kHz 与高质量 TTS 保持一致，避免 8kHz 音频流参与混音。
+    const sampleRate = 44100;
     const samples = sampleRate;
     const buf = new ArrayBuffer(44 + samples * 2);
     const view = new DataView(buf);
@@ -69,7 +70,7 @@ function ensureAudioCreated() {
 
 /** 用户触摸时尝试播放（浏览器要求音频必须在用户手势中启动） */
 function onUserGesture() {
-    if (!_keepAliveWanted || !_keepAliveAudio) return;
+    if (!_keepAliveWanted || !_keepAliveAudio || _suspendedForCall || _suspendedForMedia) return;
     _keepAliveAudio.play().then(() => {
         // 成功了，移除监听
         document.removeEventListener("touchstart", onUserGesture, true);
@@ -79,6 +80,7 @@ function onUserGesture() {
 
 async function startKeepAlive() {
     _keepAliveWanted = true;
+    if (_suspendedForCall || _suspendedForMedia) return;
 
     // Wake Lock
     try {
@@ -102,6 +104,7 @@ async function startKeepAlive() {
 function stopKeepAlive() {
     _keepAliveWanted = false;
     _suspendedForCall = false;
+    _suspendedForMedia = false;
     _wakeLock?.release().catch(() => {});
     _wakeLock = null;
     if (_keepAliveAudio) {
@@ -113,6 +116,51 @@ function stopKeepAlive() {
 }
 
 /**
+ * 暂停保活以避免与正在播放的 TTS / 媒体音频同时进入 Android/WebView 音频链。
+ * 这是独立于通话的通用保护：正常聊天 TTS 播放期间也会触发。
+ */
+function suspendKeepAliveForMedia() {
+    if (!_keepAliveWanted || _suspendedForCall) return;
+    _suspendedForMedia = true;
+    if (_keepAliveAudio) {
+        try { _keepAliveAudio.pause(); } catch {}
+    }
+}
+
+function resumeKeepAliveAfterMedia() {
+    if (!_suspendedForMedia) return;
+    _suspendedForMedia = false;
+    if (!_keepAliveWanted || _suspendedForCall) return;
+    void startKeepAlive();
+}
+
+/**
+ * 监听页面上的实际媒体播放。TTS 当前使用 HTMLAudioElement 播放，
+ * 因此在任何其他 audio/video 开始播放时暂停保活；媒体结束后恢复。
+ * 使用 capture 阶段是因为 play/ended 事件不会冒泡。
+ */
+function installMediaKeepAliveGuard() {
+    const onPlay = (event: Event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLMediaElement) || target === _keepAliveAudio) return;
+        suspendKeepAliveForMedia();
+    };
+    const onEnded = (event: Event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLMediaElement) || target === _keepAliveAudio) return;
+        resumeKeepAliveAfterMedia();
+    };
+    document.addEventListener("play", onPlay, true);
+    document.addEventListener("ended", onEnded, true);
+    document.addEventListener("pause", onEnded, true);
+    return () => {
+        document.removeEventListener("play", onPlay, true);
+        document.removeEventListener("ended", onEnded, true);
+        document.removeEventListener("pause", onEnded, true);
+    };
+}
+
+/**
  * Pause keep-alive for the duration of a voice/video call. Starting STT grabs
  * the mic and the OS audio focus, which would otherwise interrupt the looping
  * silent audio and leave it dead after the call. The call holds the mic + audio
@@ -121,6 +169,7 @@ function stopKeepAlive() {
 export function suspendKeepAliveForCall() {
     if (!_keepAliveWanted) return;
     _suspendedForCall = true;
+    _suspendedForMedia = false;
     _wakeLock?.release().catch(() => {});
     _wakeLock = null;
     if (_keepAliveAudio) {
@@ -206,6 +255,8 @@ export function useWeixinBridge() {
             stopKeepAlive();
         }
 
+        const removeMediaGuard = installMediaKeepAliveGuard();
+
         // 监听保活设置变更
         const onCfg = () => {
             const on = loadKeepAlive();
@@ -214,6 +265,7 @@ export function useWeixinBridge() {
         window.addEventListener("weixin-config-changed", onCfg);
         return () => {
             window.removeEventListener("weixin-config-changed", onCfg);
+            removeMediaGuard();
             stopKeepAlive();
         };
     }, []);
@@ -232,7 +284,7 @@ export function useWeixinBridge() {
             }
 
             // Wake Lock 在 visibilitychange 时会自动释放，需重新获取
-            if (loadKeepAlive()) {
+            if (loadKeepAlive() && !_suspendedForCall && !_suspendedForMedia) {
                 startKeepAlive();
             }
         };
