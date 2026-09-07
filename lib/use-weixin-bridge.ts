@@ -11,11 +11,8 @@ export type BotRunStatus = {
 };
 
 // ⏸ 临时总开关：暂停微信 Bot 的 getupdates 长轮询，止血 Netlify compute
-//（长轮询会全程占用函数时长）。仅停轮询，不影响后台保活（保活是通用功能）。
-// 恢复功能：改回 false 重新部署。长期方案=用户电脑本地助手接管轮询。
 const WEIXIN_BRIDGE_PAUSED: boolean = true;
 
-// 模块级状态：让设置页面也能读到
 const _statusMap = new Map<string, BotRunStatus>();
 
 export function getWeixinBotStatus(id: string): BotRunStatus {
@@ -29,50 +26,32 @@ function broadcastStatus() {
 // ── 保活：Wake Lock + 静音音频 ───────────────────────────────
 let _wakeLock: WakeLockSentinel | null = null;
 let _keepAliveAudio: HTMLAudioElement | null = null;
-
-let _keepAliveWanted = false; // 标记：想要保活但还没获得用户手势
-let _suspendedForCall = false; // 标记：因语音/视频通话临时暂停了保活
-let _suspendedForMedia = false; // 标记：因其他音频/视频播放临时暂停了保活
+let _keepAliveWanted = false;
+let _suspendedForCall = false;
+let _suspendedForMedia = false;
 
 function ensureAudioCreated() {
     if (_keepAliveAudio) return;
     _keepAliveAudio = new Audio();
-    // 生成 1 秒微弱音频：使用 44.1kHz 与高质量 TTS 保持一致，避免 8kHz 音频流参与混音。
     const sampleRate = 44100;
     const samples = sampleRate;
     const buf = new ArrayBuffer(44 + samples * 2);
     const view = new DataView(buf);
     const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
-    writeStr(0, "RIFF");
-    view.setUint32(4, 36 + samples * 2, true);
-    writeStr(8, "WAVE");
-    writeStr(12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    writeStr(36, "data");
+    writeStr(0, "RIFF"); view.setUint32(4, 36 + samples * 2, true); writeStr(8, "WAVE"); writeStr(12, "fmt ");
+    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeStr(36, "data");
     view.setUint32(40, samples * 2, true);
-    // ±1 LSB 微噪声（约 -90dB，不可闻）：纯零波形会被 Chrome 判为"无声页面"，
-    // 安卓后台 5 分钟后定时器被强节流（轮询延迟拉到分钟级）；有能量的音频
-    // 可获得 "playing audio" 豁免。
-    for (let i = 0; i < samples; i++) {
-        view.setInt16(44 + i * 2, i % 2 === 0 ? 1 : -1, true);
-    }
+    for (let i = 0; i < samples; i++) view.setInt16(44 + i * 2, i % 2 === 0 ? 1 : -1, true);
     const blob = new Blob([buf], { type: "audio/wav" });
     _keepAliveAudio.src = URL.createObjectURL(blob);
     _keepAliveAudio.loop = true;
     _keepAliveAudio.volume = 0.01;
 }
 
-/** 用户触摸时尝试播放（浏览器要求音频必须在用户手势中启动） */
 function onUserGesture() {
     if (!_keepAliveWanted || !_keepAliveAudio || _suspendedForCall || _suspendedForMedia) return;
     _keepAliveAudio.play().then(() => {
-        // 成功了，移除监听
         document.removeEventListener("touchstart", onUserGesture, true);
         document.removeEventListener("click", onUserGesture, true);
     }).catch(() => {});
@@ -81,21 +60,14 @@ function onUserGesture() {
 async function startKeepAlive() {
     _keepAliveWanted = true;
     if (_suspendedForCall || _suspendedForMedia) return;
-
-    // Wake Lock
     try {
         if ("wakeLock" in navigator) {
             _wakeLock = await navigator.wakeLock.request("screen");
             _wakeLock.addEventListener("release", () => { _wakeLock = null; });
         }
     } catch {}
-
-    // 准备音频
     ensureAudioCreated();
-
-    // 先尝试直接播放（如果之前已有用户手势则可以成功）
     _keepAliveAudio!.play().catch(() => {
-        // 失败了：注册监听，等下一次用户触摸时播放
         document.addEventListener("touchstart", onUserGesture, { capture: true, once: false });
         document.addEventListener("click", onUserGesture, { capture: true, once: false });
     });
@@ -107,24 +79,33 @@ function stopKeepAlive() {
     _suspendedForMedia = false;
     _wakeLock?.release().catch(() => {});
     _wakeLock = null;
-    if (_keepAliveAudio) {
-        _keepAliveAudio.pause();
-        _keepAliveAudio.currentTime = 0;
-    }
+    if (_keepAliveAudio) { _keepAliveAudio.pause(); _keepAliveAudio.currentTime = 0; }
     document.removeEventListener("touchstart", onUserGesture, true);
     document.removeEventListener("click", onUserGesture, true);
 }
 
-/**
- * 暂停保活以避免与正在播放的 TTS / 媒体音频同时进入 Android/WebView 音频链。
- * 这是独立于通话的通用保护：正常聊天 TTS 播放期间也会触发。
- */
+export function suspendKeepAliveForCall() {
+    if (!_keepAliveWanted) return;
+    _suspendedForCall = true;
+    _suspendedForMedia = false;
+    _wakeLock?.release().catch(() => {});
+    _wakeLock = null;
+    if (_keepAliveAudio) { try { _keepAliveAudio.pause(); } catch {} }
+    document.removeEventListener("touchstart", onUserGesture, true);
+    document.removeEventListener("click", onUserGesture, true);
+}
+
+export function resumeKeepAliveAfterCall() {
+    if (!_suspendedForCall) return;
+    _suspendedForCall = false;
+    if (!_keepAliveWanted) return;
+    void startKeepAlive();
+}
+
 function suspendKeepAliveForMedia() {
     if (!_keepAliveWanted || _suspendedForCall) return;
     _suspendedForMedia = true;
-    if (_keepAliveAudio) {
-        try { _keepAliveAudio.pause(); } catch {}
-    }
+    if (_keepAliveAudio) { try { _keepAliveAudio.pause(); } catch {} }
 }
 
 function resumeKeepAliveAfterMedia() {
@@ -134,168 +115,71 @@ function resumeKeepAliveAfterMedia() {
     void startKeepAlive();
 }
 
-/**
- * 监听页面上的实际媒体播放。TTS 当前使用 HTMLAudioElement 播放，
- * 因此在任何其他 audio/video 开始播放时暂停保活；媒体结束后恢复。
- * 使用 capture 阶段是因为 play/ended 事件不会冒泡。
- */
 function installMediaKeepAliveGuard() {
     const onPlay = (event: Event) => {
         const target = event.target;
         if (!(target instanceof HTMLMediaElement) || target === _keepAliveAudio) return;
         suspendKeepAliveForMedia();
     };
-    const onEnded = (event: Event) => {
+    const onStop = (event: Event) => {
         const target = event.target;
         if (!(target instanceof HTMLMediaElement) || target === _keepAliveAudio) return;
         resumeKeepAliveAfterMedia();
     };
     document.addEventListener("play", onPlay, true);
-    document.addEventListener("ended", onEnded, true);
-    document.addEventListener("pause", onEnded, true);
+    document.addEventListener("ended", onStop, true);
+    document.addEventListener("pause", onStop, true);
     return () => {
         document.removeEventListener("play", onPlay, true);
-        document.removeEventListener("ended", onEnded, true);
-        document.removeEventListener("pause", onEnded, true);
+        document.removeEventListener("ended", onStop, true);
+        document.removeEventListener("pause", onStop, true);
     };
-}
-
-/**
- * Pause keep-alive for the duration of a voice/video call. Starting STT grabs
- * the mic and the OS audio focus, which would otherwise interrupt the looping
- * silent audio and leave it dead after the call. The call holds the mic + audio
- * session itself, so keep-alive is redundant meanwhile. No-op if keep-alive is off.
- */
-export function suspendKeepAliveForCall() {
-    if (!_keepAliveWanted) return;
-    _suspendedForCall = true;
-    _suspendedForMedia = false;
-    _wakeLock?.release().catch(() => {});
-    _wakeLock = null;
-    if (_keepAliveAudio) {
-        try { _keepAliveAudio.pause(); } catch {}
-    }
-    document.removeEventListener("touchstart", onUserGesture, true);
-    document.removeEventListener("click", onUserGesture, true);
-}
-
-/** Re-arm keep-alive after a call ends, unless the user turned it off meanwhile. */
-export function resumeKeepAliveAfterCall() {
-    if (!_suspendedForCall) return;
-    _suspendedForCall = false;
-    if (!_keepAliveWanted) return; // keep-alive was switched off during the call
-    void startKeepAlive(); // re-acquires Wake Lock + replays the silent audio
 }
 
 export function useWeixinBridge() {
     const [bots, setBots] = useState<WeixinBotConfig[]>([]);
     const abortMap = useRef(new Map<string, AbortController>());
-
-    // 初始加载 + 监听配置变更
     useEffect(() => {
         setBots(loadWeixinBots());
         const handler = () => setBots(loadWeixinBots());
         window.addEventListener("weixin-config-changed", handler);
         return () => window.removeEventListener("weixin-config-changed", handler);
     }, []);
-
-    // 启动 bot（可复用：首次 + 回前台恢复）
     const startBot = useCallback((bot: WeixinBotConfig) => {
         if (WEIXIN_BRIDGE_PAUSED) {
             _statusMap.set(bot.id, { status: "stopped", message: "已暂停（为节省额度临时关闭，稍后恢复）" });
-            broadcastStatus();
-            return;
+            broadcastStatus(); return;
         }
         if (abortMap.current.has(bot.id)) return;
-
-        const ctrl = new AbortController();
-        abortMap.current.set(bot.id, ctrl);
-
-        _statusMap.set(bot.id, { status: "running" });
-        broadcastStatus();
-
-        runBotLoop(
-            bot,
-            ctrl.signal,
-            (status, message) => {
-                _statusMap.set(bot.id, { status, message });
-                broadcastStatus();
-            },
-        ).finally(() => {
+        const ctrl = new AbortController(); abortMap.current.set(bot.id, ctrl);
+        _statusMap.set(bot.id, { status: "running" }); broadcastStatus();
+        runBotLoop(bot, ctrl.signal, (status, message) => { _statusMap.set(bot.id, { status, message }); broadcastStatus(); }).finally(() => {
             abortMap.current.delete(bot.id);
-            if (!_statusMap.get(bot.id)?.message) {
-                _statusMap.set(bot.id, { status: "stopped" });
-                broadcastStatus();
-            }
+            if (!_statusMap.get(bot.id)?.message) { _statusMap.set(bot.id, { status: "stopped" }); broadcastStatus(); }
         });
     }, []);
-
-    // 同步轮询 loop
     useEffect(() => {
         const activeBots = bots.filter(b => b.enabled && b.botToken.trim());
-
         for (const bot of activeBots) startBot(bot);
-
-        // 停止已禁用或已删除的 bot
-        for (const [id, ctrl] of abortMap.current) {
-            if (!activeBots.find(b => b.id === id)) {
-                ctrl.abort();
-                _statusMap.set(id, { status: "stopped" });
-            }
-        }
+        for (const [id, ctrl] of abortMap.current) if (!activeBots.find(b => b.id === id)) { ctrl.abort(); _statusMap.set(id, { status: "stopped" }); }
         broadcastStatus();
     }, [bots, startBot]);
-
-    // 保活管理：只要用户开启保活就启动，不依赖 Bot 是否启用。
     useEffect(() => {
-        const shouldKeepAlive = loadKeepAlive();
-        if (shouldKeepAlive) {
-            startKeepAlive();
-        } else {
-            stopKeepAlive();
-        }
-
+        if (loadKeepAlive()) startKeepAlive(); else stopKeepAlive();
         const removeMediaGuard = installMediaKeepAliveGuard();
-
-        // 监听保活设置变更
-        const onCfg = () => {
-            const on = loadKeepAlive();
-            if (on) startKeepAlive(); else stopKeepAlive();
-        };
+        const onCfg = () => { if (loadKeepAlive()) startKeepAlive(); else stopKeepAlive(); };
         window.addEventListener("weixin-config-changed", onCfg);
-        return () => {
-            window.removeEventListener("weixin-config-changed", onCfg);
-            removeMediaGuard();
-            stopKeepAlive();
-        };
+        return () => { window.removeEventListener("weixin-config-changed", onCfg); removeMediaGuard(); stopKeepAlive(); };
     }, []);
-
-    // 回到前台：恢复被挂起的轮询 + 重新获取 Wake Lock
     useEffect(() => {
         const onVisibility = () => {
             if (document.visibilityState !== "visible") return;
-
-            // 重启所有已停止（非错误）的 bot
             const activeBots = loadWeixinBots().filter(b => b.enabled && b.botToken.trim());
-            for (const bot of activeBots) {
-                if (!abortMap.current.has(bot.id)) {
-                    startBot(bot);
-                }
-            }
-
-            // Wake Lock 在 visibilitychange 时会自动释放，需重新获取
-            if (loadKeepAlive() && !_suspendedForCall && !_suspendedForMedia) {
-                startKeepAlive();
-            }
+            for (const bot of activeBots) if (!abortMap.current.has(bot.id)) startBot(bot);
+            if (loadKeepAlive() && !_suspendedForCall && !_suspendedForMedia) startKeepAlive();
         };
         document.addEventListener("visibilitychange", onVisibility);
         return () => document.removeEventListener("visibilitychange", onVisibility);
     }, [startBot]);
-
-    // 卸载时全部停止
-    useEffect(() => {
-        return () => {
-            for (const ctrl of abortMap.current.values()) ctrl.abort();
-        };
-    }, []);
+    useEffect(() => () => { for (const ctrl of abortMap.current.values()) ctrl.abort(); }, []);
 }
