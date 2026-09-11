@@ -12,6 +12,18 @@ function expandToolMacros(text: string, context?: ToolSchemaFormatContext): stri
     return postProcessTrim(engine.expand(text));
 }
 
+function formatToolSource(tool: EnabledTool): string {
+    if (tool.source === "mcp_server") return `[MCP：${tool.name}]`;
+    if (tool.source === "rest_package") return `[REST：${tool.name}]`;
+    if (tool.source === "composite_package") return `[组合工具：${tool.name}]`;
+    if (tool.source === "custom_app_package") return `[自定义APP：${tool.name}]`;
+    return `[内置工具：${tool.name}]`;
+}
+
+function formatToolListItem(tool: EnabledTool): string {
+    return `${formatToolSource(tool)} ${tool.name}: ${tool.description}`;
+}
+
 /**
  * Format enabled tools as compact list (name + description only, no params).
  * Returns empty string if no tools (TRIM removes the line).
@@ -19,13 +31,18 @@ function expandToolMacros(text: string, context?: ToolSchemaFormatContext): stri
 export function formatToolsForPrompt(tools: EnabledTool[]): string {
     if (tools.length === 0) return "";
 
-    const toolList = tools.map(t => `${t.name}: ${t.description}`).join("\n");
+    const toolList = tools.map(formatToolListItem).join("\n");
 
     return [
         "<available_actions>",
         "下面是系统可自动处理的动作类别，只在需要时按格式输出动作指令，不需要时正常聊天即可：",
         "",
         toolList,
+        "",
+        "工具来源规则：",
+        "- [MCP：...] 表示外部 MCP 服务提供的工具；当用户明确询问该外部服务的数据或功能时，优先使用对应 MCP 工具。",
+        "- [内置工具：...] 只用于小手机自身的数据或功能，不要用来代替外部 MCP 服务的数据查询。",
+        "- 不要因为工具名称相似，就用本地资料/内置工具代替用户明确指定的外部服务。",
         "",
         "使用步骤：",
         "1. 需要系统处理某个动作类别时，先用 [获取指令:动作类别名] 获取可执行动作格式。",
@@ -41,13 +58,18 @@ export function formatToolsForPrompt(tools: EnabledTool[]): string {
 export function formatGroupToolsForPrompt(tools: EnabledTool[]): string {
     if (tools.length === 0) return "";
 
-    const toolList = tools.map(t => `${t.name}: ${t.description}`).join("\n");
+    const toolList = tools.map(formatToolListItem).join("\n");
 
     return [
         "<available_actions>",
         "下面是系统可自动处理的动作类别，只在需要时按格式输出动作指令，不需要时正常聊天即可：",
         "",
         toolList,
+        "",
+        "工具来源规则：",
+        "- [MCP：...] 表示外部 MCP 服务提供的工具；当用户明确询问该外部服务的数据或功能时，优先使用对应 MCP 工具。",
+        "- [内置工具：...] 只用于小手机自身的数据或功能，不要用来代替外部 MCP 服务的数据查询。",
+        "- 不要因为工具名称相似，就用本地资料/内置工具代替用户明确指定的外部服务。",
         "",
         "使用步骤：",
         '1. 需要系统处理某个动作类别时，先用 ["角色名"获取指令:动作类别名] 获取可执行动作格式。',
@@ -150,10 +172,12 @@ export function formatToolSchema(tool: EnabledTool, context?: ToolSchemaFormatCo
             return expandToolMacros(`以下是你获取指令的返回结果：\n${lines.join("\n")}`, context);
         }
 
+        lines.push("【重要】这是外部 MCP 服务。用户询问该服务的数据或功能时，必须优先使用下面的具体 MCP 动作；不要使用本地资料、内置数据或其他内部工具代替。");
+        lines.push("例如：询问网易云歌单 → 使用 list_my_playlists；询问某个网易云歌单歌曲 → 使用 get_playlist_songs。");
         lines.push("可执行的具体动作如下。执行时必须使用具体动作名，不要输出 MCP 名称本身。");
         for (const mcpTool of tool.mcpTools) {
             lines.push("");
-            lines.push(`动作：${mcpTool.name}`);
+            lines.push(`动作：[MCP：${tool.name}] ${mcpTool.name}`);
             if (mcpTool.description) lines.push(`描述：${mcpTool.description}`);
             const schema = mcpTool.inputSchema as { properties?: Record<string, Record<string, unknown>> } | undefined;
             const props = schema?.properties || {};
@@ -171,6 +195,7 @@ export function formatToolSchema(tool: EnabledTool, context?: ToolSchemaFormatCo
         return expandToolMacros([
             "以下是你获取指令的返回结果：",
             lines.join("\n"),
+            "选择动作时必须优先选择与用户明确提到的外部服务相匹配的 MCP 动作。不要改用本地资料工具来查询外部服务。",
             "请根据用户需求选择一个具体动作，并使用格式：",
             "[执行动作:具体动作名({参数JSON})]",
             "禁止输出 MCP 名称本身。执行动作时只输出动作指令，不要附加闲聊内容。",
